@@ -26,7 +26,7 @@ extern "C" {
  * wait audio timeout ms,if timeout is reached but audio
  * do not anchoring mediasync,use video anchor
  */
-#define WAIT_AUDIO_TIME_MS 600 //600 is good
+#define WAIT_AUDIO_TIME_MS 300 //600 is good
 
 /*
  * the latency time from wayland client to wayland server display

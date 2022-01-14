@@ -41,6 +41,8 @@ class VDOServerThread:public Tls::Thread {
     void readyToRun();
     void readyToExit();
     virtual bool threadLoop();
+    static void msgCallback(void *userData , RenderMsgType type, void *msg);
+    static int getCallback(void *userData, int key, void *value);
   private:
     typedef struct {
         int fd;
@@ -65,18 +67,38 @@ class VDOServerThread:public Tls::Thread {
     } BufferInfo;
     bool setCaptureBufferFormat();
     bool getCaptureBufferFrameSize();
+    bool setupCapture();
     bool setupCaptureBuffers();
     bool setupMmapCaptureBuffers();
     bool setupDmaCaptureBuffers();
     void tearDownCaptureBuffers();
     void tearDownMmapCaptureBuffers();
     void tearDownDmaCaptureBuffers();
+    /**
+     * @brief queue capture buffer to vdo
+     *
+     */
+    bool queueCaptureBuffers();
+    /**
+     * @brief dequeue a v4l2 capture buffer from vdo
+     *return the capture buffer index
+     * @return int capture buffer index
+     */
+    int dequeueCaptureBuffer();
+    bool processEvent();
     int mPort;
     Tls::Poll *mPoll;
     int mFrameWidth;
     int mFrameHeight;
+    bool mDecoderEos;
+
+    int mDecodedFrameCnt;
+    int mDisplayedFrameCnt;
+    bool mNeedCaptureRestart;
 
     BufferInfo *mCaptureBuffers;
+    int mQueuedCaptureBufferCnt;
+    bool mDecoderLastFrame;
 
     //v4l2
     int mV4l2Fd;
@@ -86,7 +108,7 @@ class VDOServerThread:public Tls::Thread {
     int mNumCaptureBuffers;
     int mMinCaptureBuffers;
     int mCaptureMemMode;
-    bool mIsCaptureFmtSet;
+    bool mIsSetCaptureFmt;
 
     void *mRenderInstance;
     RenderServer *mRenderServer;

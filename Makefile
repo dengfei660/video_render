@@ -77,7 +77,7 @@ TARGET = $(RENDER_LIB) $(RENDER_SERVER) $(RENDER_CLIENT)
 
 all: $(GENERATED_SOURCES) $(TARGET)
 
-LD_FLAG = -fPIC -O -Wcpp -lm -lz -Wl,-Bsymbolic -laudio_client  -lcutils -ldrm_meson 
+LD_FLAG = -g -fPIC -O -Wcpp -lm -lz -Wl,-Bsymbolic -laudio_client  -lcutils -ldrm_meson 
 LD_FLAG_RENDERLIB = $(LD_FLAG) -shared -lmediahal_mediasync $(LD_SUPPORT_WAYLAND)
 LD_FLAG_RENDERSERVER = $(LD_FLAG) -lmediahal_videorender
 
@@ -93,16 +93,16 @@ LD_FLAG_RENDERSERVER = $(LD_FLAG) -lmediahal_videorender
 $(RENDER_LIB): $(OBJ_RENDER_LIB)
 	$(CXX) -o $@ $^ $(LD_FLAG_RENDERLIB)
 	cp -f $(RENDER_LIB) $(STAGING_DIR)/usr/lib
-#	rm -f $(OBJ_WESTON_DISPLAY)
-#	rm -f $(PROTOCOL_PATH)/*.o
-#	rm -f $(TOOLS_PATH)/*.o
-#	rm -f $(RENDERLIB_PATH)/*.o
+	rm -f $(OBJ_WESTON_DISPLAY)
+	rm -f $(PROTOCOL_PATH)/*.o
+	rm -f $(TOOLS_PATH)/*.o
+	rm -f $(RENDERLIB_PATH)/*.o
 
 $(RENDER_SERVER):$(OBJ_RENDER_SERVER)
 	$(CXX) -o $@ $^ $(LD_FLAG_RENDERSERVER)
 	chmod a+x $(RENDER_SERVER)
 	cp -f $(RENDER_SERVER) $(STAGING_DIR)/usr/bin
-#	rm -f $(SERVER_PATH)/*.o
+	rm -f $(SERVER_PATH)/*.o
 
 ifeq ($(SUPPORT_WAYLAND),YES)
 $(PROTOCOL_PATH)/%-protocol.c : $(PROTOCOL_PATH)/%.xml
@@ -125,4 +125,9 @@ install:
 .PHONY: clean
 
 clean:
-	rm -f *.o
+	rm $(RENDER_LIB)
+	rm $(RENDER_SERVER)
+	rm -f $(OBJ_WESTON_DISPLAY)
+	rm -f $(PROTOCOL_PATH)/*.o
+	rm -f $(TOOLS_PATH)/*.o
+	rm -f $(RENDERLIB_PATH)/*.o

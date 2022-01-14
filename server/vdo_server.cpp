@@ -28,6 +28,7 @@ using namespace Tls;
 
 #define TAG "rlib:vdo_server"
 #define V4L2_DEVICE "/dev/video28"
+#define COMPOSITOR_NAME "wayland"
 
 #define NUM_CAPTURE_BUFFERS (6)
 
@@ -172,13 +173,19 @@ VDOServerThread::VDOServerThread(RenderServer *renderServer,int port)
     DEBUG("in");
     mFrameWidth = 0;
     mFrameHeight = 0;
+    mRenderInstance = NULL;
     mV4l2Fd = -1;
     mIsMultiPlane = false;
     mNumCaptureBuffers = 0;
     mMinCaptureBuffers = 0;
     mCaptureMemMode = V4L2_MEMORY_DMABUF;
     mCaptureBuffers = NULL;
-    mIsCaptureFmtSet = false;
+    mIsSetCaptureFmt = false;
+    mDecoderEos = false;
+    mDecodedFrameCnt = 0;
+    mDisplayedFrameCnt = 0;
+    mQueuedCaptureBufferCnt = 0;
+    mDecoderLastFrame = false;
     mPoll = new Poll(true);
     DEBUG("out");
 }
@@ -203,7 +210,37 @@ VDOServerThread::~VDOServerThread()
     if (mCaptureBuffers) {
         free(mCaptureBuffers);
     }
+    if (mRenderInstance) {
+        render_close(mRenderInstance);
+        mRenderInstance = NULL;
+    }
     DEBUG("out");
+}
+
+void VDOServerThread::msgCallback(void *userData , RenderMsgType type, void *msg)
+{
+    VDOServerThread* vdoserver = static_cast<VDOServerThread *>(userData);
+    switch (type)
+    {
+        case MSG_RELEASE_BUFFER:{
+            RenderBuffer *renderBuffer = (RenderBuffer *)msg;
+        } break;
+        case MSG_DISPLAYED_BUFFER:{
+            vdoserver->mDisplayedFrameCnt += 1;
+        } break;
+
+        default:
+            break;
+    }
+}
+
+int VDOServerThread::getCallback(void *userData, int key, void *value)
+{
+    //get mediasync id
+    if (KEY_MEDIASYNC_INSTANCE_ID) {
+
+    }
+    return 0;
 }
 
 bool VDOServerThread::getCaptureBufferFrameSize()
@@ -245,7 +282,7 @@ bool VDOServerThread::getCaptureBufferFrameSize()
         mFrameWidth = selection.r.width;
         mFrameHeight = selection.r.height;
     }
-    DEBUG("frame size %dx%d\n", mFrameWidth, mFrameHeight);
+    INFO("frame size %dx%d\n", mFrameWidth, mFrameHeight);
     return true;
 }
 
@@ -254,8 +291,13 @@ bool VDOServerThread::setCaptureBufferFormat()
     int rc;
     int32_t bufferType;
 
-    if (mIsCaptureFmtSet) {
+    if (mIsSetCaptureFmt) {
         return true;
+    }
+
+    if (mFrameWidth <= 0 || mFrameHeight <= 0) {
+        WARNING("need get frame width and height");
+        return false;
     }
 
 
@@ -295,7 +337,15 @@ bool VDOServerThread::setCaptureBufferFormat()
         DEBUG("initV4l2: failed to set format for output: rc %d errno %d", rc, errno);
         return false;
     }
-    mIsCaptureFmtSet = true;
+    mIsSetCaptureFmt = true;
+    return true;
+}
+
+bool VDOServerThread::setupCapture()
+{
+    getCaptureBufferFrameSize();
+    setCaptureBufferFormat();
+    setupCaptureBuffers();
     return true;
 }
 
@@ -307,6 +357,11 @@ bool VDOServerThread::setupCaptureBuffers()
     int32_t bufferType;
     int i, j;
     bool result = false;
+
+    if (!mIsSetCaptureFmt) {
+        WARNING("not set capture buffer format");
+        return false;
+    }
 
     bufferType= (mIsMultiPlane ? V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE : V4L2_BUF_TYPE_VIDEO_CAPTURE);
 
@@ -412,8 +467,8 @@ bool VDOServerThread::setupMmapCaptureBuffers()
             mCaptureBuffers[i].planeCount= bufOut->length;
             for( j= 0; j < mCaptureBuffers[i].planeCount; ++j )
             {
-                DEBUG("Output buffer: %d", i);
-                DEBUG("  index: %d bytesUsed %d offset %d length %d flags %08x",
+                DEBUG("Output bufferid: %d", i);
+                DEBUG("querybuf index: %d bytesUsed %d offset %d length %d flags %08x",
                    bufOut->index, bufOut->m.planes[j].bytesused, bufOut->m.planes[j].m.mem_offset, bufOut->m.planes[j].length, bufOut->flags );
 
                 memset( &expbuf, 0, sizeof(expbuf) );
@@ -585,10 +640,142 @@ void VDOServerThread::tearDownDmaCaptureBuffers()
 
 }
 
+bool VDOServerThread::queueCaptureBuffers()
+{
+    bool ret = true;
+    int i, j, rc;
+    for( int i= 0; i < mNumCaptureBuffers; ++i )
+    {
+        if (mIsMultiPlane)
+        {
+            for( j= 0; j < mCaptureBuffers[i].planeCount; ++j )
+            {
+                mCaptureBuffers[i].buf.m.planes[j].bytesused= mCaptureBuffers[i].buf.m.planes[j].length;
+            }
+        }
+        rc= IOCTL(mV4l2Fd, VIDIOC_QBUF, &mCaptureBuffers[i].buf );
+        if ( rc < 0 )
+        {
+            ERROR("failed to queue output buffer: rc %d errno %d", rc, errno);
+            ret = false;
+            goto exit;
+        }
+        mQueuedCaptureBufferCnt += 1;
+        mCaptureBuffers[i].queued= true;
+    }
+
+exit:
+    return ret;
+}
+
+int VDOServerThread::dequeueCaptureBuffer()
+{
+    int bufferIndex= -1;
+    int rc;
+    struct v4l2_buffer buf;
+    struct v4l2_plane planes[MAX_PLANES];
+
+    if ( mDecoderLastFrame )
+    {
+        goto exit;
+    }
+    memset( &buf, 0, sizeof(buf));
+    buf.type= mCaptureFmt.type;
+    buf.memory= mCaptureMemMode;
+    if ( mIsMultiPlane )
+    {
+        buf.length = mCaptureBuffers[0].planeCount;
+        buf.m.planes = planes;
+    }
+    rc= IOCTL( mV4l2Fd, VIDIOC_DQBUF, &buf );
+    if ( rc == 0 )
+    {
+        bufferIndex= buf.index;
+        if ( mIsMultiPlane )
+        {
+            memcpy( mCaptureBuffers[bufferIndex].buf.m.planes, buf.m.planes, sizeof(struct v4l2_plane)*MAX_PLANES);
+            buf.m.planes= mCaptureBuffers[bufferIndex].buf.m.planes;
+        }
+        mCaptureBuffers[bufferIndex].buf= buf;
+        mCaptureBuffers[bufferIndex].queued= false;
+        --mQueuedCaptureBufferCnt;
+    }
+    else
+    {
+        ERROR("failed to de-queue output buffer: rc %d errno %d", rc, errno);
+        if ( errno == EPIPE )
+        {
+            /* Decoding is done: no more capture buffers can be dequeued */
+            mDecoderLastFrame = true;
+        }
+    }
+
+exit:
+   return bufferIndex;
+}
+
+bool VDOServerThread::processEvent()
+{
+    int rc;
+    struct v4l2_event event;
+    bool ret = false;
+
+    for ( ; ; ) {
+        memset( &event, 0, sizeof(event));
+        rc= IOCTL( mV4l2Fd, VIDIOC_DQEVENT, &event );
+        if (rc != 0) { //dq event fail,break
+            break;
+        }
+        //get this event
+        ret = true;
+
+        if ( (event.type == V4L2_EVENT_SOURCE_CHANGE) &&
+                (event.u.src_change.changes & V4L2_EVENT_SRC_CH_RESOLUTION) ) {
+            struct v4l2_format fmtOut;
+            int32_t bufferType;
+
+            INFO("source change event\n");
+            memset( &fmtOut, 0, sizeof(fmtOut));
+            bufferType= (mIsMultiPlane ? V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE : V4L2_BUF_TYPE_VIDEO_CAPTURE);
+            fmtOut.type= bufferType;
+            rc= IOCTL( mV4l2Fd, VIDIOC_G_FMT, &fmtOut );
+            if ((mNumCaptureBuffers == 0) ||
+                    (mIsMultiPlane &&
+                        ((fmtOut.fmt.pix_mp.width != mCaptureFmt.fmt.pix_mp.width) ||
+                        (fmtOut.fmt.pix_mp.height != mCaptureFmt.fmt.pix_mp.height))) ||
+                    (!mIsMultiPlane &&
+                        ((fmtOut.fmt.pix.width != mCaptureFmt.fmt.pix.width) ||
+                        (fmtOut.fmt.pix.height != mCaptureFmt.fmt.pix.height))) ||
+                    (mDecodedFrameCnt > 0) ) {
+                tearDownCaptureBuffers();
+                if ( mIsMultiPlane )
+                {
+                    mFrameWidth = fmtOut.fmt.pix_mp.width;
+                    mFrameHeight = fmtOut.fmt.pix_mp.height;
+                }
+                else
+                {
+                    mFrameWidth= fmtOut.fmt.pix.width;
+                    mFrameHeight= fmtOut.fmt.pix.height;
+                }
+                getCaptureBufferFrameSize();
+                setCaptureBufferFormat();
+                setupCaptureBuffers();
+                mNeedCaptureRestart = true;
+            }
+        } else if (event.type == V4L2_EVENT_EOS) {
+            INFO("v4l2 decoder eos event\n");
+            mDecoderEos = true;
+        }
+    }
+    return ret;
+}
+
 bool VDOServerThread::init()
 {
     struct v4l2_capability caps;
     int rc;
+    RenderCallback renderCallback;
 
     mV4l2Fd = open( V4L2_DEVICE, O_RDWR | O_CLOEXEC);
     if (mV4l2Fd < 0) {
@@ -639,12 +826,33 @@ bool VDOServerThread::init()
         goto tag_exit;
     }
 
+    //open render lib
+    mRenderInstance = render_open((char *)COMPOSITOR_NAME);
+    if (!mRenderInstance) {
+        ERROR("open render lib fail");
+        goto tag_exit;
+    }
+
+    render_set_user_data(mRenderInstance,this);
+    renderCallback.doMsgSend = msgCallback;
+    renderCallback.doGetValue = getCallback;
+    render_set_callback(mRenderInstance, &renderCallback);
+    rc = render_connect(mRenderInstance);
+    if (!rc) {
+        ERROR("render lib connect fail");
+        goto tag_exit;
+    }
+
     return true;
 
 tag_exit:
     if (mV4l2Fd > 0) {
         close(mV4l2Fd);
         mV4l2Fd = 0;
+    }
+    if (mRenderInstance) {
+        render_close(mRenderInstance);
+        mRenderInstance = NULL;
     }
 
    return false;
@@ -690,28 +898,34 @@ bool VDOServerThread::threadLoop()
     } else if (ret == 0) { //poll time out
         return true; //run loop
     }
-
-    memset( &event, 0, sizeof(event));
-    rc = IOCTL( mV4l2Fd, VIDIOC_DQEVENT, &event );
-    if (rc < 0) {
-        return true;
+    if (!mIsSetCaptureFmt) {
+        setupCapture();
     }
 
-    if ( (event.type == V4L2_EVENT_SOURCE_CHANGE) &&
-              (event.u.src_change.changes & V4L2_EVENT_SRC_CH_RESOLUTION) )
-    {
-        struct v4l2_format fmtIn, fmtOut;
-        int32_t bufferType;
+    //process v4l2 event
+    processEvent();
 
-        INFO("source change event\n");
-        memset( &fmtOut, 0, sizeof(fmtOut));
-        bufferType= (mIsMultiPlane ? V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE : V4L2_BUF_TYPE_VIDEO_CAPTURE);
-        fmtOut.type= bufferType;
-        rc= IOCTL( mV4l2Fd, VIDIOC_G_FMT, &fmtOut );
+    //dqueue capture buffer
+    if (mPoll->isReadable(mV4l2Fd)) {
+        int bufferIndex = dequeueCaptureBuffer();
+        if (bufferIndex >=0 ) { //put frame to render lib
 
-    } else if (event.type == V4L2_EVENT_EOS) {
-        INFO("v4l2 eos event\n");
+        }
     }
+
+
+    //at the last,we process capture restart
+    if (mNeedCaptureRestart) {
+        mNeedCaptureRestart = false;
+        queueCaptureBuffers();
+        rc= IOCTL( mV4l2Fd, VIDIOC_STREAMON, &mCaptureFmt.type );
+        if ( rc < 0 )
+        {
+            ERROR("wstVideoOutputThread: streamon failed for output: rc %d errno %d", rc, errno );
+            return false;
+        }
+    }
+
     return true;
 }
 

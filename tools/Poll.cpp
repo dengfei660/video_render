@@ -215,7 +215,7 @@ bool Poll::isReadable(int fd)
 {
     for (int i = 0; i < mActiveFdsCnt; i++) {
         struct pollfd *pfd = &mActiveFds[i];
-        if (pfd->fd == fd && ((pfd->revents & POLLIN) != 0)) {
+        if (pfd->fd == fd && ((pfd->revents & POLLIN|POLLRDNORM) != 0)) {
             return true;
         }
     }
