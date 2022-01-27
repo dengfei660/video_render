@@ -8,6 +8,7 @@ extern "C" {
 #endif
 
 #define TAG "rlib:render_lib"
+#define VERSION "V1.0.0"
 
 void* render_open(char *name) {
     //open log file
@@ -23,6 +24,8 @@ void* render_open(char *name) {
         Logger_set_level(level);
         INFO("VIDEO_RENDER_LOG_LEVEL=%d",level);
     }
+
+    INFO("build version:%s",VERSION);
 
     INFO("open");
     RenderCore *render = new RenderCore();

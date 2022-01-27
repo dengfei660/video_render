@@ -29,16 +29,6 @@
 #include <stdint.h>
 #include "wayland-util.h"
 
-#ifndef __has_attribute
-# define __has_attribute(x) 0  /* Compatibility with non-clang compilers. */
-#endif
-
-#if (__has_attribute(visibility) || defined(__GNUC__) && __GNUC__ >= 4)
-#define WL_PRIVATE __attribute__ ((visibility("hidden")))
-#else
-#define WL_PRIVATE
-#endif
-
 extern const struct wl_interface wl_output_interface;
 extern const struct wl_interface wl_surface_interface;
 extern const struct wl_interface zwp_fullscreen_shell_mode_feedback_v1_interface;
@@ -64,7 +54,7 @@ static const struct wl_message zwp_fullscreen_shell_v1_events[] = {
 	{ "capability", "u", types + 0 },
 };
 
-WL_PRIVATE const struct wl_interface zwp_fullscreen_shell_v1_interface = {
+WL_EXPORT const struct wl_interface zwp_fullscreen_shell_v1_interface = {
 	"zwp_fullscreen_shell_v1", 1,
 	3, zwp_fullscreen_shell_v1_requests,
 	1, zwp_fullscreen_shell_v1_events,
@@ -76,7 +66,7 @@ static const struct wl_message zwp_fullscreen_shell_mode_feedback_v1_events[] = 
 	{ "present_cancelled", "", types + 0 },
 };
 
-WL_PRIVATE const struct wl_interface zwp_fullscreen_shell_mode_feedback_v1_interface = {
+WL_EXPORT const struct wl_interface zwp_fullscreen_shell_mode_feedback_v1_interface = {
 	"zwp_fullscreen_shell_mode_feedback_v1", 1,
 	0, NULL,
 	3, zwp_fullscreen_shell_mode_feedback_v1_events,

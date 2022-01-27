@@ -59,6 +59,7 @@ void logPrint( int level, const char *fmt, ... )
       va_start( argptr, fmt );
       vfprintf( g_fd, fmt, argptr );
       va_end( argptr );
+      fflush(g_fd);
    }
 }
 

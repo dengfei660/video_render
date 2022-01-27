@@ -3,6 +3,8 @@
 #include <mutex>
 #include <list>
 #include <string>
+#include <sys/un.h>
+#include <linux/netlink.h>
 #include "render_lib.h"
 #include "Thread.h"
 #include "Poll.h"
@@ -42,7 +44,7 @@ class SocketServerThread : public Tls::Thread {
     void readyToExit();
     virtual bool threadLoop();
   private:
-    int adaptFd( int fdin );
+    int adaptFd(int fdin);
     void processEvent();
     int mSocketFd;
     Tls::Mutex mMutex;

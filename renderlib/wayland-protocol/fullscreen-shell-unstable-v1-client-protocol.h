@@ -15,7 +15,7 @@ extern "C" {
  * @page page_fullscreen_shell_unstable_v1 The fullscreen_shell_unstable_v1 protocol
  * @section page_ifaces_fullscreen_shell_unstable_v1 Interfaces
  * - @subpage page_iface_zwp_fullscreen_shell_v1 - displays a single surface per output
- * - @subpage page_iface_zwp_fullscreen_shell_mode_feedback_v1
+ * - @subpage page_iface_zwp_fullscreen_shell_mode_feedback_v1 - 
  * @section page_copyright_fullscreen_shell_unstable_v1 Copyright
  * <pre>
  *

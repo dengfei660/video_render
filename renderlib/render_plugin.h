@@ -141,6 +141,18 @@ class RenderPlugin {
      */
     virtual int flush() = 0;
     /**
+     * @brief pause plugin
+     * 
+     * @return int 0 sucess,other fail
+     */
+    virtual int pause() = 0;
+    /**
+     * @brief resume plugin
+     * 
+     * @return int 0 sucess,other fail
+     */
+    virtual int resume() = 0;
+    /**
      * @brief close display
      *
      * @return int 0 sucess,other fail

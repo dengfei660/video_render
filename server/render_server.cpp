@@ -84,10 +84,10 @@ bool RenderServer::createSocketConnectThread()
     return ret;
 }
 
-bool RenderServer::createVDOServerThread(int port)
+bool RenderServer::createVDOServerThread(uint32_t ctrId, uint32_t vdoPort, uint32_t vdecPort)
 {
     int i = 0;
-    bool ret;
+    bool ret = true;
 
     for (i = 0; i < MAX_VIDEO_RENDER_INSTANCE; i++) {
         if (mVDOServerThread[i] == NULL) {
@@ -97,13 +97,15 @@ bool RenderServer::createVDOServerThread(int port)
 
     if (i >= MAX_VIDEO_RENDER_INSTANCE) {
         ERROR("too many vdo data server thread");
-        return -1;
+        ret = false;
+        goto tag_exit;
     }
 
-    mVDOServerThread[i] = new VDOServerThread(this, port);
+    mVDOServerThread[i] = new VDOServerThread(this, ctrId, vdoPort, vdecPort);
     ret = mVDOServerThread[i]->init();
     if (!ret) {
         ERROR("vdo server thread init fail");
+        ret = false;
         goto tag_exit;
     }
 
@@ -113,11 +115,11 @@ tag_exit:
     return ret;
 }
 
-bool RenderServer::destroyVDOServerThread(int port)
+bool RenderServer::destroyVDOServerThread(uint32_t ctrId, uint32_t vdoPort, uint32_t vdecPort)
 {
     int foundIdx = 0;
     for (int i = 0; i < MAX_VIDEO_RENDER_INSTANCE; i++) {
-        if (mVDOServerThread[i]->getPort() == port) {
+        if (mVDOServerThread[i]->getId() == ctrId) {
             foundIdx = i;
         }
     }

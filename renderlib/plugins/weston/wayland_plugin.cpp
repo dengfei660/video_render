@@ -109,6 +109,15 @@ int WaylandPlugin::flush()
     return NO_ERROR;
 }
 
+int WaylandPlugin::pause()
+{
+    return NO_ERROR;
+}
+int WaylandPlugin::resume()
+{
+    return NO_ERROR;
+}
+
 int WaylandPlugin::closeDisplay()
 {
     mDisplay->closeDisplay();

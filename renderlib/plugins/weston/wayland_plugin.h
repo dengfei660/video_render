@@ -19,6 +19,8 @@ class WaylandPlugin : public RenderPlugin
     virtual int openWindow();
     virtual int displayFrame(RenderBuffer *buffer, int64_t displayTime);
     virtual int flush();
+    virtual int pause();
+    virtual int resume();
     virtual int closeDisplay();
     virtual int closeWindow();
     virtual int get(int key, void *value);

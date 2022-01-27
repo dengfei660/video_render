@@ -2,6 +2,7 @@
 #include "render_core.h"
 #include "Logger.h"
 #include "wayland_plugin.h"
+#include "wstclient_plugin.h"
 #include "wayland_videoformat.h"
 #include "Times.h"
 #include "config.h"
@@ -65,12 +66,24 @@ static PluginCallback plugincallback = {
 int RenderCore::init(char *name)
 {
     DEBUG("name:%s",name);
+    char *compositor = name;
     mCompositorName = name;
-    if (!strcmp(name, "wayland")) {
-        mPlugin = new WaylandPlugin();
-        mPlugin->init();
-        mPlugin->setUserData(this, &plugincallback);
+    char *val = getenv("VIDEO_RENDER_COMPOSITOR");
+    if (val) {
+        INFO("VIDEO_RENDER_COMPOSITOR=%s",val);
+        if (!strcmp(val, "weston") || !strcmp(val, "westeros")) {
+            compositor = val;
+        }
     }
+
+    if (!strcmp(compositor, "wayland") || !strcmp(compositor, "weston")) {
+        mPlugin = new WaylandPlugin();
+    } else if (!strcmp(compositor, "westeros")) {
+        mPlugin = new WstClientPlugin();
+    }
+    INFO("compositor:%s",compositor);
+    mPlugin->init();
+    mPlugin->setUserData(this, &plugincallback);
     return NO_ERROR;
 }
 
@@ -412,6 +425,7 @@ int RenderCore::pause()
             ERROR("Error set mediasync pause ");
         }
     }
+    mPlugin->pause();
     return NO_ERROR;
 }
 
@@ -425,6 +439,7 @@ int RenderCore::resume()
             ERROR("Error set mediasync resume");
         }
     }
+    mPlugin->resume();
     return NO_ERROR;
 }
 

@@ -327,7 +327,6 @@ void WaylandDisplay::readyToRun()
 
 bool WaylandDisplay::threadLoop()
 {
-    struct pollfd pfd;
     int ret;
 
     while (wl_display_prepare_read_queue (mWlDisplay, mWlQueue) != 0) {

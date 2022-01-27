@@ -7,6 +7,7 @@
 #include "Thread.h"
 #include "Poll.h"
 #include "vdo_server.h"
+#include "uevent_server.h"
 #include "socket_server.h"
 
 #define MAX_VIDEO_RENDER_INSTANCE 9
@@ -27,8 +28,8 @@ class RenderServer {
      * @param port vdo channel port
      * @return int thread index or -1 if fail
      */
-    bool createVDOServerThread(int port);
-    bool destroyVDOServerThread(int port);
+    bool createVDOServerThread(uint32_t ctrId, uint32_t vdoPort, uint32_t vdecPort);
+    bool destroyVDOServerThread(uint32_t ctrId, uint32_t vdoPort, uint32_t vdecPort);
     bool createSocketServerThread(int socketfd);
     bool destroySocketServerThread(int socketfd);
   private:

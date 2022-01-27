@@ -13,28 +13,13 @@
 
 class RenderServer;
 
-class UeventProcessThread : public Tls::Thread {
-  public:
-    UeventProcessThread(RenderServer *renderServer);
-    virtual ~UeventProcessThread();
-    bool init();
-
-    //thread func
-    void readyToRun();
-    virtual bool threadLoop();
-  private:
-    int mUeventFd;
-    Tls::Poll *mPoll;
-    RenderServer *mRenderServer;
-};
-
 class VDOServerThread:public Tls::Thread {
   public:
-    VDOServerThread(RenderServer *renderServer, int port);
+    VDOServerThread(RenderServer *renderServer, uint32_t ctrId, uint32_t vdoPort, uint32_t vdecPort);
     virtual ~VDOServerThread();
     bool init();
-    int getPort() {
-      return mPort;
+    int getId() {
+      return mCtrId;
     };
 
     //thread func
@@ -45,24 +30,13 @@ class VDOServerThread:public Tls::Thread {
     static int getCallback(void *userData, int key, void *value);
   private:
     typedef struct {
-        int fd;
-        void *start;
-        int capacity;
-    } PlaneInfo;
-    typedef struct {
         struct v4l2_buffer buf;
-        struct v4l2_plane planes[MAX_PLANES];
-        PlaneInfo planeInfo[MAX_PLANES];
         int bufferId;
-        bool locked;
-        int lockCount;
-        int planeCount;
         int fd;
         void *start;
         int capacity;
-        int frameNumber;
-        int64_t frameTime;
-        bool drop;
+        size_t length;
+        int64_t pts;
         bool queued;
     } BufferInfo;
     bool setCaptureBufferFormat();
@@ -70,15 +44,14 @@ class VDOServerThread:public Tls::Thread {
     bool setupCapture();
     bool setupCaptureBuffers();
     bool setupMmapCaptureBuffers();
-    bool setupDmaCaptureBuffers();
     void tearDownCaptureBuffers();
     void tearDownMmapCaptureBuffers();
-    void tearDownDmaCaptureBuffers();
     /**
      * @brief queue capture buffer to vdo
      *
      */
-    bool queueCaptureBuffers();
+    bool queueAllCaptureBuffers();
+    bool queueCaptureBuffers(int bufIndex);
     /**
      * @brief dequeue a v4l2 capture buffer from vdo
      *return the capture buffer index
@@ -86,7 +59,8 @@ class VDOServerThread:public Tls::Thread {
      */
     int dequeueCaptureBuffer();
     bool processEvent();
-    int mPort;
+    bool vdoConnect();
+    bool vdoDisconnect();
     Tls::Poll *mPoll;
     int mFrameWidth;
     int mFrameHeight;
@@ -100,9 +74,12 @@ class VDOServerThread:public Tls::Thread {
     int mQueuedCaptureBufferCnt;
     bool mDecoderLastFrame;
 
+    uint32_t mCtrId;
+    uint32_t mVdoPort;
+    uint32_t mVdecPort;
+
     //v4l2
     int mV4l2Fd;
-    bool mIsMultiPlane;
     uint32_t mDeviceCaps;
     struct v4l2_format mCaptureFmt;
     int mNumCaptureBuffers;
