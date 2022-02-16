@@ -44,8 +44,8 @@ void Logger_set_file(char *filepath);
 
 #define INT_FATAL(FORMAT, ...)      logPrint(0, "FATAL: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
 #define INT_ERROR(FORMAT, ...)      logPrint(0, "ERROR: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
-#define INT_WARNING(FORMAT, ...)    logPrint(1, "WARN: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
-#define INT_INFO(FORMAT, ...)       logPrint(2, "INFO: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
+#define INT_WARNING(FORMAT, ...)    logPrint(1, " WARN: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
+#define INT_INFO(FORMAT, ...)       logPrint(2, " INFO: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
 #define INT_DEBUG(FORMAT, ...)      logPrint(3, "DEBUG: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
 #define INT_TRACE1(FORMAT, ...)     logPrint(4, "TRACE: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
 #define INT_TRACE2(FORMAT, ...)     logPrint(5, "TRACE: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)

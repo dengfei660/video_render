@@ -1,5 +1,4 @@
 #include <cstring>
-#include <linux/videodev2.h>
 #include "wstclient_wayland.h"
 #include "ErrorCode.h"
 #include "Logger.h"
@@ -14,11 +13,12 @@
 
 #define TAG "rlib:wstclient_wayland"
 
-#define DEFAULT_VIDEO_SERVER "video"
 #define DEFAULT_WINDOW_X (0)
 #define DEFAULT_WINDOW_Y (0)
 #define DEFAULT_WINDOW_WIDTH (1280)
 #define DEFAULT_WINDOW_HEIGHT (720)
+
+#define AV_SYNC_SESSION_V_MONO 64
 
 enum
 {
@@ -314,67 +314,9 @@ static const struct wl_registry_listener registry_listener = {
     WstClientWayland::registryHandleGlobalRemove
 };
 
-void WstClientWayland::onEvent(void *userData, WstEVent *event)
-{
-    WstClientWayland *self = static_cast<WstClientWayland *>(userData);
-    switch (event->event)
-    {
-        case WST_REFRESH_RATE: {
-            int rate = event->param;
-            INFO("refresh rate:%d",rate);
-        } break;
-        case WST_BUFFER_RELEASE: {
-            int bufferid = event->param;
-            auto item = self->mRenderBuffersMap.find(bufferid);
-            if (item == self->mRenderBuffersMap.end()) {
-                WARNING("can't find map Renderbuffer");
-                return ;
-            }
-            self->mRenderBuffersMap.erase(item);
-            RenderBuffer *renderbuffer = (RenderBuffer*) item->second;
-            self->mWstClientPlugin->handleBufferRelease(renderbuffer);
-        } break;
-        case WST_STATUS: {
-            int dropframes = event->param;
-            uint64_t frameTime = event->lparam2;
-            if (self->numDroppedFrames != event->param) {
-                self->numDroppedFrames = event->param;
-            }
-            //update status,if frameTime isn't equal -1LL
-            //this buffer had displayed
-            if (frameTime != -1LL) {
-                RenderBuffer *renderbuffer = NULL;
-                self->mLastDisplayFramePTS = frameTime;
-                for (auto item = self->mRenderBuffersMap.begin(); item != self->mRenderBuffersMap.end(); item++) {
-                    renderbuffer = (RenderBuffer*)item->second;
-                    if (renderbuffer->pts == frameTime) {
-                        break;
-                    } else {
-                        renderbuffer = NULL;
-                    }
-                }
-                if (renderbuffer) {
-                    self->mWstClientPlugin->handleFrameDisplayed(renderbuffer);
-                }
-            }
-        } break;
-        case WST_UNDERFLOW: {
-            /* code */
-        } break;
-        case WST_ZOOM_MODE: {
-            self->mZoomMode = event->param;
-        } break;
-        case WST_DEBUG_LEVEL: {
-            /* code */
-        } break;
-        default:
-            break;
-    }
-}
-
 WstClientWayland::WstClientWayland(WstClientPlugin *plugin)
     :mMutex("bufferMutex"),
-    mWstClientPlugin(plugin)
+    mPlugin(plugin)
 {
     TRACE2("construct WstClientWayland");
     mWlDisplay = NULL;
@@ -405,28 +347,21 @@ WstClientWayland::WstClientWayland(WstClientPlugin *plugin)
     mFrameWidth = 0;
     mFrameHeight = 0;
     mPixelAspectRatio = 1.0;
-    mWstClientSocket = NULL;
-    numDroppedFrames = 0;
-    mLastDisplayFramePTS = 0;
     mPoll = new Tls::Poll(true);
 }
 
 WstClientWayland::~WstClientWayland()
 {
-    TRACE2("desconstruct WstClientWayland");
+    TRACE2("deconstruct WstClientWayland");
     if (mPoll) {
         delete mPoll;
         mPoll = NULL;
     }
-    if (mWstClientSocket) {
-        delete mWstClientSocket;
-        mWstClientSocket = NULL;
-    }
 }
 
-int WstClientWayland::openDisplay()
+int WstClientWayland::connectToWayland()
 {
-    DEBUG("openDisplay in");
+    DEBUG("in");
     mWlDisplay = wl_display_connect(NULL);
     if (!mWlDisplay) {
         FATAL("Failed to connect to the wayland display");
@@ -464,13 +399,13 @@ int WstClientWayland::openDisplay()
         }
     }
 
-    DEBUG("openDisplay out");
+    DEBUG("out");
     return NO_ERROR;
 }
 
-void WstClientWayland::closeDisplay()
+void WstClientWayland::disconnectFromWayland()
 {
-    DEBUG("closeDisplay in");
+    DEBUG("in");
 
    if (isRunning()) {
         TRACE1("try stop dispatch thread");
@@ -531,106 +466,7 @@ void WstClientWayland::closeDisplay()
         mWlDisplay = NULL;
     }
 
-    DEBUG("closeDisplay out");
-}
-
-int WstClientWayland::openWindow()
-{
-    mWstClientSocket = new WstClientSocket(DEFAULT_VIDEO_SERVER, (void *)this, WstClientWayland::onEvent);
-    if (!mWstClientSocket) {
-        ERROR("create wst video client connection fail");
-        return ERROR_OPEN_FAIL;
-    }
-    mWstClientSocket->sendResourceVideoClientConnection(0);
-
-    //send session info to server
-    //we use mediasync to sync a/v,so select AV_SYNC_MODE_VIDEO_MONO as av clock
-    mWstClientSocket->sendSessionInfoVideoClientConnection(AV_SYNC_SESSION_V_MONO, AV_SYNC_MODE_VIDEO_MONO);
-    return NO_ERROR;
-}
-
-void WstClientWayland::closeWindow()
-{
-    if (mWstClientSocket) {
-        delete mWstClientSocket;
-        mWstClientSocket = NULL;
-    }
-}
-
-void WstClientWayland::setVideoBufferFormat(RenderVideoFormat format)
-{
-    TRACE1("set video buffer format: %d",format);
-    mBufferFormat = format;
-};
-
-int WstClientWayland::displayFrameBuffer(RenderBuffer *buffer, int64_t displayTime)
-{
-    bool ret;
-    WstBufferInfo wstBufferInfo;
-    WstRect wstRect;
-    int x,y,w,h;
-    if (needBounds()) {
-        getVideoBounds(&x, &y, &w, &h);
-    }
-
-    wstBufferInfo.bufferId = buffer->id;
-    wstBufferInfo.planeCount = buffer->dma.planeCnt;
-    for (int i = 0; i < buffer->dma.planeCnt; i++) {
-        wstBufferInfo.planeInfo[i].fd = buffer->dma.fd[i];
-        wstBufferInfo.planeInfo[i].stride = buffer->dma.stride[i];
-        wstBufferInfo.planeInfo[i].offset = buffer->dma.offset[i];
-    }
-
-    wstBufferInfo.frameWidth = buffer->dma.width;
-    wstBufferInfo.frameHeight = buffer->dma.height;
-    wstBufferInfo.frameTime = displayTime;
-
-    if (mBufferFormat == VIDEO_FORMAT_NV12) {
-        wstBufferInfo.pixelFormat = V4L2_PIX_FMT_NV12;
-    }
-
-    wstRect.x = x;
-    wstRect.y = y;
-    wstRect.w = w;
-    wstRect.h = h;
-
-    if (mWstClientSocket) {
-        ret = mWstClientSocket->sendFrameVideoClientConnection(&wstBufferInfo, &wstRect);
-        if (!ret) {
-            ERROR("send video frame to server fail");
-            mWstClientPlugin->handleBufferRelease(buffer);
-            return ERROR_FAILED_TRANSACTION;
-        }
-    }
-
-    //storage render buffer to manager
-    std::pair<int, RenderBuffer *> item(buffer->id, buffer);
-    mRenderBuffersMap.insert(item);
-    return NO_ERROR;
-}
-
-int WstClientWayland::flush()
-{
-    if (mWstClientSocket) {
-        mWstClientSocket->sendFlushVideoClientConnection();
-    }
-    return NO_ERROR;
-}
-
-int WstClientWayland::pause()
-{
-    if (mWstClientSocket) {
-        mWstClientSocket->sendPauseVideoClientConnection(true);
-    }
-    return NO_ERROR;
-}
-
-int WstClientWayland::resume()
-{
-    if (mWstClientSocket) {
-        mWstClientSocket->sendPauseVideoClientConnection(false);
-    }
-    return NO_ERROR;
+    DEBUG("out");
 }
 
 void WstClientWayland::getVideoBounds(int *x, int *y, int *w, int *h)
@@ -642,6 +478,16 @@ void WstClientWayland::getVideoBounds(int *x, int *y, int *w, int *h)
     double roix, roiy, roiw, roih;
     double arf, ard;
     double hfactor= 1.0, vfactor= 1.0;
+
+    //do not calculate bounds
+    if(!needBounds()) {
+        *x = mVideoX;
+        *y = mVideoY;
+        *w = mVideoWidth;
+        *h = mVideoHeight;
+        return;
+    }
+
     vx = mVideoX;
     vy = mVideoY;
     vw = mVideoWidth;
@@ -909,9 +755,9 @@ void WstClientWayland::updateVideoPosition()
         wl_surface_damage(mWlSurface, 0, 0, mWindowWidth, mWindowHeight);
         wl_surface_commit(mWlSurface);
     }
-    if (mVideoPaused && mWstClientSocket)
+    if (mVideoPaused && mPlugin)
     {
-        mWstClientSocket->sendRectVideoClientConnection(mVideoX, mVideoY, mVideoWidth, mVideoHeight);
+        mPlugin->setVideoRect(mVideoX, mVideoY, mVideoWidth, mVideoHeight);
     }
 }
 

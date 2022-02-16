@@ -8,7 +8,7 @@ extern "C" {
 #endif
 
 #define TAG "rlib:render_lib"
-#define VERSION "V1.0.0"
+#define VERSION "V1.1.0"
 
 void* render_open(char *name) {
     //open log file

@@ -139,6 +139,12 @@ unsigned int getU32( unsigned char *p );
  */
 int putU32( unsigned char *p, unsigned n );
 
+/**
+ * @brief get signed int 64 bit value from char p buffer
+ *
+ * @param p char buffer
+ * @return signed int 64 bit value
+ */
 int64_t getS64( unsigned char *p );
 
 /**

@@ -12,9 +12,9 @@ extern "C" {
 #endif
 
 #define WST_MAX_PLANES (3)
-#define AV_SYNC_SESSION_V_MONO 64 //when set it, AV_SYNC_MODE_VIDEO_MONO of sync mode is selected
+#define AV_SYNC_SESSION_V_MONO 64 //when set it, AV_SYNC_MODE_VIDEO_MONO of sync mode must be selected
 
-enum sync_mode {
+enum av_sync_mode {
     AV_SYNC_MODE_VMASTER = 0,
     AV_SYNC_MODE_AMASTER = 1,
     AV_SYNC_MODE_PCR_MASTER = 2,
@@ -23,26 +23,6 @@ enum sync_mode {
     AV_SYNC_MODE_VIDEO_MONO = 5, /* video render by system mono time */
     AV_SYNC_MODE_MAX
 };
-
-typedef enum _WstEventType
-{
-    WST_REFRESH_RATE = 0,
-    WST_BUFFER_RELEASE,
-    WST_STATUS,
-    WST_UNDERFLOW,
-    WST_ZOOM_MODE,
-    WST_DEBUG_LEVEL,
-} WstEventType;
-
-typedef struct _WstEvent
-{
-    WstEventType event;
-    int param;
-    int param1;
-    int64_t lparam2;
-} WstEVent;
-
-typedef void (*wstOnEvent) (void *userData, WstEVent *event);
 
 typedef struct _WstPlaneInfo
 {
@@ -73,21 +53,43 @@ typedef struct _WstRect
    int h;
 } WstRect;
 
+typedef enum _WstEventType
+{
+    WST_REFRESH_RATE = 0,
+    WST_BUFFER_RELEASE,
+    WST_STATUS,
+    WST_UNDERFLOW,
+    WST_ZOOM_MODE,
+    WST_DEBUG_LEVEL,
+} WstEventType;
+
+typedef struct _WstEvent
+{
+    WstEventType event;
+    int param;
+    int param1;
+    int64_t lparam2;
+} WstEvent;
+
 #ifdef  __cplusplus
 }
 #endif
 
+class WstClientPlugin;
+
 class WstClientSocket : public Tls::Thread{
   public:
-    WstClientSocket(const char *name, void *userData, wstOnEvent onEvent);
+    WstClientSocket(WstClientPlugin *plugin);
     virtual ~WstClientSocket();
+    bool connectToSocket(const char *name);
+    bool disconnectFromSocket();
     /**
      * @brief send video plane resource id to westeros server
      * 
      * @param resourceId if 0 value,westeros server will select main video plane
      *          if other value,westeros server will select an other video plane
      */
-    void sendResourceVideoClientConnection(int resourceId);
+    void wstSendLayerVideoClientConnection(bool pip);
     void sendFlushVideoClientConnection();
     void sendPauseVideoClientConnection(bool pause);
     void sendHideVideoClientConnection(bool hide);
@@ -107,8 +109,7 @@ class WstClientSocket : public Tls::Thread{
     int mServerRefreshRate;
     int64_t mServerRefreshPeriod;
     int mZoomMode;
-    wstOnEvent mOnEventCallback;
-    void *mUserData;
+    WstClientPlugin *mPlugin;
     Tls::Poll *mPoll;
 };
 

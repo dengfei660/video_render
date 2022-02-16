@@ -34,29 +34,20 @@ class WstClientWayland : public Tls::Thread{
      *
      * @return int 0 sucess,other fail
      */
-    int  openDisplay();
+    int connectToWayland();
     /**
      * @brief release display that accquired from compositor
      *
      */
-    void closeDisplay();
+    void disconnectFromWayland();
 
-    int openWindow();
-
-    void closeWindow();
-    /**
-     * @brief Set the Video Buffer Format object
-     *
-     * @param format RenderVideoFormat it is defined in render_lib.h
-     */
-    void setVideoBufferFormat(RenderVideoFormat format);
-
-    RenderVideoFormat getVideoBufferFormat() {
-        return mBufferFormat;
-    };
     //thread func
     void readyToRun();
     virtual bool threadLoop();
+
+    void getVideoBounds(int *x, int *y, int *w, int *h);
+
+    void setTextureCrop(int vx, int vy, int vw, int vh);
 
     struct wl_display *getWlDisplay() {
         return mWlDisplay;
@@ -68,10 +59,7 @@ class WstClientWayland : public Tls::Thread{
     struct wl_event_queue *getWlEventQueue() {
         return mWlQueue;
     };
-    WstClientPlugin * getPlugin()
-    {
-        return mWstClientPlugin;
-    };
+
     void setWindowSize(int x, int y, int w, int h) {
         mWindowX = x;
         mWindowY = y;
@@ -90,14 +78,9 @@ class WstClientWayland : public Tls::Thread{
         mFrameWidth = frameWidth;
         mFrameHeight = frameHeight;
     };
-
-    int displayFrameBuffer(RenderBuffer *buffer, int64_t displayTime);
-
-    int flush();
-
-    int pause();
-
-    int resume();
+    void setZoomMode(int zoomMode) {
+        mZoomMode = zoomMode;
+    };
 
     /**callback functions**/
     static void shellSurfaceId(void *data,
@@ -162,14 +145,11 @@ class WstClientWayland : public Tls::Thread{
     static void registryHandleGlobal (void *data, struct wl_registry *registry,
             uint32_t id, const char *interface, uint32_t version);
     static void registryHandleGlobalRemove (void *data, struct wl_registry *registry, uint32_t name);
-    static void onEvent (void *userData, WstEVent *event);
   private:
-    void getVideoBounds(int *x, int *y, int *w, int *h);
-    void setTextureCrop(int vx, int vy, int vw, int vh);
     void updateVideoPosition();
     void setVideoPath(bool useGfxPath);
     bool approxEqual( double v1, double v2);
-    WstClientPlugin *mWstClientPlugin;
+    WstClientPlugin *mPlugin;
     struct wl_display *mWlDisplay;
     struct wl_event_queue *mWlQueue;
     struct wl_surface *mWlSurface;
@@ -217,15 +197,6 @@ class WstClientWayland : public Tls::Thread{
     float mOpacity;
     float mZorder;
     int mZoomMode;
-
-    int numDroppedFrames;
-    int64_t mLastDisplayFramePTS;
-
-    RenderVideoFormat mBufferFormat;
-
-    WstClientSocket *mWstClientSocket;
-
-    std::unordered_map<int, RenderBuffer *> mRenderBuffersMap;
 
     mutable Tls::Mutex mMutex;
     int mFd;

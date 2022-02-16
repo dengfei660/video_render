@@ -596,6 +596,7 @@ void RenderCore::mediaSyncTunnelmodeDisplay()
 
     //get systemtime
     nowSystemtimeUs = Tls::Times::getSystemTimeUs();
+    //get mediasync systemtime
     ret = MediaSync_getRealTimeForNextVsync(mMediaSync, &nowMediasyncTimeUs);
     if (ret != AM_MEDIASYNC_OK) {
         WARNING("get mediasync time fail");
@@ -627,32 +628,31 @@ void RenderCore::mediaSyncTunnelmodeDisplay()
                 Tls::Mutex::Autolock _l(mRenderMutex);
                 mRenderCondition.waitRelative(mRenderMutex,2);
                 return;
-            }
-
+            }/* else if (mSyncmode == MEDIA_SYNC_VMASTER) {
+                WARNING("wait mediasync update anchor of vmaster,realtime:%lld,mediasynctime:%lld",realtimeUs,nowMediasyncTimeUs);
+                Tls::Mutex::Autolock _l(mRenderMutex);
+                mRenderCondition.waitRelative(mRenderMutex,2);
+                return;
+            }*/
+            WARNING("mediasync get realtimeUs %lld,use local systemtime",realtimeUs);
             /*use pts diff to send frame displaying,when get realtime fail,
             the first frame send imediately,but other frames will send
             interval pts diff time
             */
-            if (mLastDisplayPTS > -1) {
+            if (mLastDisplayPTS >= 0) {
                 int64_t ptsdifUs = (buf->pts - mLastDisplayPTS)/1000;
                 delaytimeUs = (ptsdifUs - LATENCY_TO_HDMI_TIME_US) > 0 ? (ptsdifUs - LATENCY_TO_HDMI_TIME_US) : ptsdifUs;
                 if (delaytimeUs > 0) {
                     Tls::Mutex::Autolock _l(mRenderMutex);
                     mRenderCondition.waitRelative(mRenderMutex,delaytimeUs/1000); 
+                } else {
+                    delaytimeUs = 0;
                 }
+                realtimeUs = mLastDisplayRealtime + ptsdifUs;
+            } else if (mLastDisplayPTS == -1) { //first frame,displayed immediately
+                realtimeUs = nowMediasyncTimeUs;
+                delaytimeUs = 0;
             }
-
-#if 0
-            //this is first frame,display immediately
-            if (mLastDisplayPTS == 0) {
-                //display video frame
-                WARNING("first frame, anchor mediasync and display immediately");
-                MediaSync_updateAnchor(mMediaSync, buf->pts/1000, 0, 0);
-            }
-            WARNING("get mediasync realtime %lld",realtimeUs);
-            realtimeUs = nowMediasyncTimeUs;
-            delaytimeUs = 0;
-#endif
         }
     } else {
         //block thread to wait until delaytime is reached
@@ -665,10 +665,10 @@ display_tag:
     Tls::Mutex::Autolock _l(mRenderMutex);
     mRenderBufferQueue.pop_front();
 
-    TRACE1("PTSNs:%lld,lastPTSNs:%lld,realtimeUs:%lld,mediasynctimeUs:%lld,systemtimeUs:%lld,wait:%lld ms",buf->pts,mLastDisplayPTS,realtimeUs,nowMediasyncTimeUs,nowSystemtimeUs,delaytimeUs/1000);
+    TRACE1("PTSNs:%lld,lastPTSNs:%lld,realtmUs:%lld,mtmUs:%lld,stmUs:%lld,wait:%lld ms",buf->pts,mLastDisplayPTS,realtimeUs,nowMediasyncTimeUs,nowSystemtimeUs,delaytimeUs/1000);
 
     //display video frame
-    TRACE1("+++++display frame:%p, ptsNs:%lld(%lld ms),realtimeUs:%lld,realtimediffMs:%lld",buf,buf->pts,buf->pts/1000000,realtimeUs,(realtimeUs-mLastDisplayRealtime)/1000);
+    TRACE1("+++++display frame:%p, ptsNs:%lld(%lld ms),realtmUs:%lld,realtmDiffMs:%lld",buf,buf->pts,buf->pts/1000000,realtimeUs,(realtimeUs-mLastDisplayRealtime)/1000);
     mPlugin->displayFrame(buf, realtimeUs);
     mLastDisplayPTS = buf->pts;
     mLastRenderBuffer = buf;
@@ -899,7 +899,6 @@ RenderBuffer * RenderCore::getFreeRenderBuffer()
     }
 
     mFreeRenderBufferMap.erase(item);
-
 
     return (RenderBuffer*) item->second;
 }

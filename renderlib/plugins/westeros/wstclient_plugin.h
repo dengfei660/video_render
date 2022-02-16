@@ -1,7 +1,8 @@
-#ifndef __WST_CLIENT_H__
-#define __WST_CLIENT_H__
+#ifndef __WST_CLIENT_PLUGIN_H__
+#define __WST_CLIENT_PLUGIN_H__
 #include "render_plugin.h"
 #include "wstclient_wayland.h"
+#include "wstclient_socket.h"
 #include "Mutex.h"
 
 class WstClientPlugin : public RenderPlugin
@@ -26,21 +27,42 @@ class WstClientPlugin : public RenderPlugin
     virtual int set(int key, void *value);
     virtual int getState();
     //buffer release callback
-    virtual void handleBufferRelease(RenderBuffer *buffer);
+    void handleBufferRelease(RenderBuffer *buffer);
     //buffer had displayed ,but not release
-    virtual void handleFrameDisplayed(RenderBuffer *buffer);
+    void handleFrameDisplayed(RenderBuffer *buffer);
+
+    void onWstSocketEvent(WstEvent *event);
+
+    void setVideoRect(int videoX, int videoY, int videoWidth, int videoHeight);
   private:
+    /**
+     * @brief Get the Display Frame Buffer Id object
+     *
+     * @param displayTime
+     * @return int > 0 if sucess, -1 if not found
+     */
+    int getDisplayFrameBufferId(int64_t displayTime);
     PluginCallback *mCallback;
     WstClientWayland *mWayland;
+    WstClientSocket *mWstClientSocket;
     PluginRect mWinRect;
 
     mutable Tls::Mutex mDisplayLock;
     mutable Tls::Mutex mRenderLock;
     bool mFullscreen; //default true value to full screen show video
 
+    int mNumDroppedFrames;
+    int64_t mLastDisplayFramePTS;
+
+    RenderVideoFormat mBufferFormat;
+    std::unordered_map<int, RenderBuffer *> mRenderBuffersMap;
+    /*key is buffer id, value is display time*/
+    std::unordered_map<int, int64_t> mDisplayedFrameMap;
+
+    mutable Tls::Mutex mMutex;
     void *mUserData;
     int mState;
 };
 
 
-#endif /*__WST_CLIENT_H__*/
+#endif /*__WST_CLIENT_PLUGIN_H__*/
