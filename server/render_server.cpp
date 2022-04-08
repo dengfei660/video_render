@@ -31,149 +31,41 @@ using namespace Tls;
 RenderServer::RenderServer()
 {
     DEBUG("in");
-    mUeventProcessThread = NULL;
-    mSocketConnectThread = NULL;
-    for (int i = 0; i < MAX_VIDEO_RENDER_INSTANCE; i++) {
-        mVDOServerThread[i] == NULL;
-        mSocketServerThread[i] = NULL;
-    }
-
-    mRenderInstanceCnt = 0;
+    mMonitorThread = NULL;
+    mSinkMgr = new SinkManager();
     DEBUG("out");
 }
 
 RenderServer::~RenderServer()
 {
     DEBUG("in");
-    for (int i = 0; i < MAX_VIDEO_RENDER_INSTANCE; i++) {
-        if (mVDOServerThread[i] != NULL) {
-            delete mVDOServerThread[i];
-            mVDOServerThread[i] = NULL;
-        }
-        if (mSocketServerThread[i] != NULL) {
-            delete mSocketServerThread[i];
-            mSocketServerThread[i] = NULL;
-        }
+    if (mMonitorThread) {
+        delete mMonitorThread;
+        mMonitorThread = NULL;
     }
 
-    if (mUeventProcessThread) {
-        delete mUeventProcessThread;
-        mUeventProcessThread = NULL;
-    }
-
-    if (mSocketConnectThread) {
-        delete mSocketConnectThread;
-        mSocketConnectThread = NULL;
+    if (mSinkMgr) {
+        delete mSinkMgr;
+        mSinkMgr = NULL;
     }
     DEBUG("out");
 }
 
-bool RenderServer::createUeventProcessThread()
+
+void RenderServer::createMonitorThread()
 {
     bool ret;
-    mUeventProcessThread = new UeventProcessThread(this);
-    ret = mUeventProcessThread->init();
-    mUeventProcessThread->run("ueventProcessThread");
-    return ret;
-}
-bool RenderServer::createSocketConnectThread()
-{
-    bool ret;
-    mSocketConnectThread = new SocketConnectThread(this);
-    ret = mSocketConnectThread->init();
-    return ret;
+    mMonitorThread = new MonitorThread(mSinkMgr);
+    ret = mMonitorThread->init();
+    mMonitorThread->run("monitorThread");
 }
 
-bool RenderServer::createVDOServerThread(uint32_t ctrId, uint32_t vdoPort, uint32_t vdecPort)
+void RenderServer::destroyMonitorThread()
 {
-    int i = 0;
-    bool ret = true;
-
-    for (i = 0; i < MAX_VIDEO_RENDER_INSTANCE; i++) {
-        if (mVDOServerThread[i] == NULL) {
-            break;
-        }
+    if (mMonitorThread) {
+        delete mMonitorThread;
+        mMonitorThread = NULL;
     }
-
-    if (i >= MAX_VIDEO_RENDER_INSTANCE) {
-        ERROR("too many vdo data server thread");
-        ret = false;
-        goto tag_exit;
-    }
-
-    mVDOServerThread[i] = new VDOServerThread(this, ctrId, vdoPort, vdecPort);
-    ret = mVDOServerThread[i]->init();
-    if (!ret) {
-        ERROR("vdo server thread init fail");
-        ret = false;
-        goto tag_exit;
-    }
-
-    mVDOServerThread[i]->run("vdoserver");
-
-tag_exit:
-    return ret;
-}
-
-bool RenderServer::destroyVDOServerThread(uint32_t ctrId, uint32_t vdoPort, uint32_t vdecPort)
-{
-    int foundIdx = 0;
-    for (int i = 0; i < MAX_VIDEO_RENDER_INSTANCE; i++) {
-        if (mVDOServerThread[i]->getId() == ctrId) {
-            foundIdx = i;
-        }
-    }
-
-    //if found
-    if (foundIdx > 0) {
-        delete mVDOServerThread[foundIdx];
-        mVDOServerThread[foundIdx] = NULL;
-    }
-    return true;
-}
-
-bool RenderServer::createSocketServerThread(int socketfd)
-{
-    int i = 0;
-    bool ret;
-    for (i = 0; i < MAX_VIDEO_RENDER_INSTANCE; i++) {
-        if (mSocketServerThread[i] == NULL) {
-            break;
-        }
-    }
-
-    if (i >= MAX_VIDEO_RENDER_INSTANCE) {
-        ERROR("too many socket data server thread");
-        return -1;
-    }
-
-    mSocketServerThread[i] = new SocketServerThread(this, socketfd);
-    ret = mSocketServerThread[i]->init();
-    if (!ret) {
-        ERROR("Error create socket");
-        goto tag_exit;
-    }
-    mSocketServerThread[i]->run("socketserver");
-
-tag_exit:
-    return ret;
-}
-
-bool RenderServer::destroySocketServerThread(int socketfd)
-{
-    int foundIdx = 0;
-    for (int i = 0; i < MAX_VIDEO_RENDER_INSTANCE; i++) {
-        if (mSocketServerThread[i]->getSocketFd() == socketfd) {
-            foundIdx = i;
-        }
-    }
-
-    //if found
-    if (foundIdx > 0) {
-        delete mSocketServerThread[foundIdx];
-        mSocketServerThread[foundIdx] = NULL;
-    }
-    return true;
 }
 
 static bool g_running= false;
@@ -181,12 +73,29 @@ static class RenderServer *g_renderServer = NULL;
 
 int main( int argc, char** argv)
 {
+    //open log file
+    char *env = getenv("VIDEO_RENDER_LOG_FILE");
+    if (env && strlen(env) > 0) {
+        Logger_set_file(env);
+        INFO("VIDEO_RENDER_LOG_FILE=%s",env);
+    }
+    //set log level
+    env = getenv("VIDEO_RENDER_LOG_LEVEL");
+    if (env) {
+        int level = atoi(env);
+        Logger_set_level(level);
+        INFO("VIDEO_RENDER_LOG_LEVEL=%d",level);
+    }
     g_renderServer = new RenderServer();
-    g_renderServer->createUeventProcessThread();
+    g_renderServer->createMonitorThread();
+
     g_running= true;
-    while( g_running )
+    while ( g_running )
     {
         usleep( 10000 );
     }
+    g_renderServer->destroyMonitorThread();
+    delete g_renderServer;
+    g_renderServer = NULL;
     return 0;
 }

@@ -4,23 +4,6 @@
 #ifdef  __cplusplus
 extern "C" {
 #endif
-/**
- * enable mediasync
- */
-#define SUPPORT_MEDIASYNC 1
-
-/**
- * enable mediasync tunnel mode
- */
-#define MEDIASYNC_TUNNEL_MODE 1
-
-/**
- * recycling use wayland_buffer including wayland_buffer
- * if set 0 will disable recycling. wayland_buffer will
- * destroy wl_buffer,and will create new one when display
- * frame
- */
-#define REUSE_WAYLAND_BUFFER 1
 
 /*
  * wait audio timeout ms,if timeout is reached but audio
@@ -32,7 +15,7 @@ extern "C" {
  * the latency time from wayland client to wayland server display
  * video frame
  */
-#define LATENCY_TO_HDMI_TIME_US 32000
+#define LATENCY_TO_HDMI_TIME_US 48000
 
 #ifdef  __cplusplus
 }

@@ -38,22 +38,33 @@ typedef struct _RenderBuffer {
     int flag; /*render buffer flag, see  enum _BufferFlag*/
     RenderDmaBuffer dma;
     RenderRawBuffer raw;
-    int64_t pts;
+    int64_t pts; //time is nano second
     void *priv;
 } RenderBuffer;
 
-
-
 /*render key*/
 enum _RenderKey {
-    KEY_WINDOW_SIZE = 300, //RenderWindowSize type of value
-    KEY_FRAME_SIZE, //RenderFrameSize type of value
-    KEY_MEDIASYNC_INSTANCE_ID, //int type of value
-    KEY_PCR_PID, //int type of value
-    KEY_DEMUX_ID, //int type of value
-    KEY_MEDIASYNC_SYNC_MODE, //int value, 0:vmaster,1:amaster,2:pcrmaster
-    KEY_VIDEO_FORMAT, //int type of value
-    KEY_VIDEO_FPS, //int64_t type of value, hight 32bit is numerator,low 32bit is denominator
+    KEY_WINDOW_SIZE = 300, //set/get the video window size,value type is RenderWindowSize
+    KEY_FRAME_SIZE, //set/get frame size,value type is RenderFrameSize
+    KEY_VIDEO_FORMAT, //set/get video pixel format, value type is int,detail see RenderVideoFormat enum
+    KEY_VIDEO_FPS, //set/get video framerate, value type is int64_t, hight 32bit is numerator,low 32bit is denominator
+    KEY_VIDEO_PIP, //set/get pip window flag, value type is int, 0:prime video,1:pip,this flag must set before render_connect
+    KEY_FRAME_DROPPED,//get dropped video frames count,value type is int
+    KEY_ZORDER, //set/get zorder of video plane,value type is int
+    KEY_MEDIASYNC_INSTANCE_ID = 400, //set/get mediasync instance id, value type is int
+    KEY_MEDIASYNC_PCR_PID, ///set/get mediasync pcr id ,value type is int
+    KEY_MEDIASYNC_DEMUX_ID, //set/get mediasync demux id ,value type is int
+    KEY_MEDIASYNC_SYNC_MODE, //set/get mediasync sync mode,value type is int, 0:vmaster,1:amaster,2:pcrmaster
+    KEY_MEDIASYNC_TUNNEL_MODE, //set mediasync to use tunnel mode, 0:notunnelmode 1:tunnelmode
+    KEY_MEDIASYNC_HAS_AUDIO, //set/get having audio,value type is int,0:not,1:has
+    KEY_MEDIASYNC_VIDEOLATENCY, //set/get
+    KEY_MEDIASYNC_STARTTHRESHOLD, //set/get
+    KEY_MEDIASYNC_VIDEOWORKMODE, //set/get
+    KEY_MEDIASYNC_AUDIO_MUTE, //set/get
+    KEY_MEDIASYNC_SOURCETYPE, //set/get
+    KEY_MEDIASYNC_VIDEOFRAME, //set/get
+    //set/get video tunnel instance id when videotunnel plugin be selected,value type is int,this key must set before render_connect
+    KEY_VIDEOTUNNEL_ID = 450,
 };
 
 /*video display window size
@@ -343,6 +354,33 @@ int render_accquire_dma_buffer(void *handle, int planecnt, int width, int height
 */
 void render_release_dma_buffer(void *handle, RenderDmaBuffer *buffer);
 
+
+/**
+ * @brief get first audio pts from mediasync
+ *
+ * @param handle a handle of render device that was opened
+ * @param pts the first rendered audio pts
+ * @return int 0 success, -1 if failed
+ */
+int render_mediasync_get_first_audio_pts(void *handle, int64_t *pts);
+
+/**
+ * @brief get current rendering audio pts from mediasync
+ *
+ *@param handle a handle of render device that was opened
+ * @param pts the current rendering audio pts
+ * @return int 0 success, -1 if failed
+ */
+int render_mediasync_get_current_audio_pts(void *handle, int64_t *pts);
+
+/**
+ * @brief get playback rate from mediasync
+ *
+ * @param handle a handle of render device that was opened
+ * @param scale the playback rate(output param)
+ * @return int 0 success, -1 if failed
+ */
+int render_mediasync_get_playback_rate(void *handle, float *scale);
 
 #ifdef  __cplusplus
 }

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <protocol name="wl_sb">
-  
+
     <copyright>
     If not stated otherwise in this file or this component's Licenses.txt file the
     following copyright and licenses apply:
@@ -42,7 +42,7 @@
     THIS SOFTWARE.
   </copyright>
   <interface name="wl_sb" version="3">
-    
+
     <description summary="cross process buffer id wrapper">
       The simple buffer protocol provides a mechanism for encapsulating buffer identifers
       that are valid across process boundaries and sharing them between client
@@ -145,7 +145,7 @@
       <arg name="offset2" type="int"/>
       <arg name="stride2" type="int"/>
     </request>
-    
+
     <!-- Create a wayland buffer encapsulating the specified file descriptor.
          Use for single and multi-plane buffers.  Set offset and stride values
          to 0 for unused planes. -->
@@ -184,6 +184,6 @@
     </request>
 
   </interface>
-  
+
 </protocol>
 

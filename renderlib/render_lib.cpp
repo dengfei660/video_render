@@ -8,7 +8,7 @@ extern "C" {
 #endif
 
 #define TAG "rlib:render_lib"
-#define VERSION "V1.1.0"
+#define VERSION "V1.3.0"
 
 void* render_open(char *name) {
     //open log file
@@ -156,6 +156,35 @@ void render_release_dma_buffer(void *handle, RenderDmaBuffer *buffer)
     renderCore->releaseDmaBuffer(buffer);
 }
 
+int render_mediasync_get_first_audio_pts(void *handle, int64_t *pts)
+{
+    RenderCore * renderCore = static_cast<RenderCore *>(handle);
+    if (!pts) {
+        ERROR("Error NULL params");
+        return -1;
+    }
+    return renderCore->getFirstAudioPts(pts);
+}
+
+int render_mediasync_get_current_audio_pts(void *handle, int64_t *pts)
+{
+    RenderCore * renderCore = static_cast<RenderCore *>(handle);
+    if (!pts) {
+        ERROR("Error NULL params");
+        return -1;
+    }
+    return renderCore->getCurrentAudioPts(pts);
+}
+
+int render_mediasync_get_playback_rate(void *handle, float *scale)
+{
+    RenderCore * renderCore = static_cast<RenderCore *>(handle);
+    if (!scale) {
+        ERROR("Error NULL params");
+        return -1;
+    }
+    return renderCore->getPlaybackRate(scale);
+}
 #ifdef  __cplusplus
 }
 #endif

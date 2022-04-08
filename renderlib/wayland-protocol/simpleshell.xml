@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <protocol name="simple_shell">
-  
+
     <copyright>
     If not stated otherwise in this file or this component's Licenses.txt file the
     following copyright and licenses apply:
@@ -42,7 +42,7 @@
     THIS SOFTWARE.
   </copyright>
   <interface name="wl_simple_shell" version="1">
-    
+
     <description summary="control the layout of surfaces">
       The simple_shell provides control over the size, position,
       z-order, opacity, etc., of the surfaces making up the user
@@ -53,7 +53,7 @@
     <event name="surface_id">
       <description summary="provides surface id for new surface">
    This event is sent to the creator of a new wl_surface to
-   provide the surface id.  The surface id is used in the 
+   provide the surface id.  The surface id is used in the
    simple_shell protocol to control the surface.  The surface
    creator can set a surface name with the set_name request
    in response to this event.
@@ -64,7 +64,7 @@
     <!-- Raised when a new surface is created by any client-->
     <event name="surface_created">
       <description summary="broadcast announcement of a new surface">
-   This event is sent to all simple_shell listeners to announce the creation 
+   This event is sent to all simple_shell listeners to announce the creation
    of a new wl_surface.
       </description>
       <arg name="surfaceId" type="uint"/>
@@ -73,7 +73,7 @@
     <!-- Raised when a surface is destroyed by any client-->
     <event name="surface_destroyed">
       <description summary="broadcast announcement of a surface destruction">
-   This event is sent to all simple_shell listeners to announce the destruction 
+   This event is sent to all simple_shell listeners to announce the destruction
    of a new wl_surface.
       </description>
       <arg name="surfaceId" type="uint"/>
@@ -102,13 +102,13 @@
    surface_status event is sent.
       </description>
     </event>
-    
+
     <!-- Set the name of a surface -->
     <request name="set_name">
       <arg name="surfaceId" type="uint"/>
       <arg name="name" type="string"/>
     </request>
-    
+
     <!-- Set the visibility of a surface -->
     <request name="set_visible">
       <arg name="surfaceId" type="uint"/>
@@ -123,13 +123,13 @@
       <arg name="width" type="int"/>
       <arg name="height" type="int"/>
     </request>
-    
+
     <!-- Set the opacity of a surface -->
     <request name="set_opacity">
       <arg name="surfaceId" type="uint"/>
       <arg name="opacity" type="fixed"/>
     </request>
-    
+
     <!-- Set the z-order of a surface -->
     <request name="set_zorder">
       <arg name="surfaceId" type="uint"/>
@@ -156,5 +156,5 @@
     </request>
 
   </interface>
-  
+
 </protocol>

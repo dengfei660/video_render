@@ -85,7 +85,7 @@ class WstClientSocket : public Tls::Thread{
     bool disconnectFromSocket();
     /**
      * @brief send video plane resource id to westeros server
-     * 
+     *
      * @param resourceId if 0 value,westeros server will select main video plane
      *          if other value,westeros server will select an other video plane
      */

@@ -1,15 +1,14 @@
-#ifndef __WAYLAND_PLUGIN_H__
-#define __WAYLAND_PLUGIN_H__
+#ifndef __VIDEO_TUNNEL_PLUGIN_H__
+#define __VIDEO_TUNNEL_PLUGIN_H__
 #include "render_plugin.h"
-#include "wayland_display.h"
-#include "wayland_window.h"
-#include "wayland_buffer.h"
+#include "videotunnel_impl.h"
+#include "Mutex.h"
 
-class WaylandPlugin : public RenderPlugin
+class VideoTunnelPlugin : public RenderPlugin
 {
   public:
-    WaylandPlugin();
-    virtual ~WaylandPlugin();
+    VideoTunnelPlugin();
+    virtual ~VideoTunnelPlugin();
     virtual void init();
     virtual void release();
     void setUserData(void *userData, PluginCallback *callback);
@@ -34,19 +33,17 @@ class WaylandPlugin : public RenderPlugin
     virtual void handleFrameDropped(RenderBuffer *buffer);
   private:
     PluginCallback *mCallback;
-    WaylandDisplay *mDisplay;
-    WaylandWindow *mWindow;
+    VideoTunnelImpl *mVideoTunnel;
     PluginRect mWinRect;
 
     mutable Tls::Mutex mDisplayLock;
     mutable Tls::Mutex mRenderLock;
     int mFrameWidth;
     int mFrameHeight;
-    bool mFullscreen; //default true value to full screen show video
 
     void *mUserData;
     int mState;
 };
 
 
-#endif /*__WAYLAND_PLUGIN_H__*/
+#endif /*__VIDEO_TUNNEL_PLUGIN_H__*/

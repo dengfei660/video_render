@@ -39,6 +39,9 @@ class WaylandWindow
     void addWaylandBuffer(RenderBuffer * buf, WaylandBuffer *waylandbuf);
     WaylandBuffer* findWaylandBuffer(RenderBuffer * buf);
     void flushBuffers();
+    bool isSupportReuseWlBuffer() {
+        return mSupportReUseWlBuffer;
+    };
     static void handleXdgToplevelClose (void *data, struct xdg_toplevel *xdg_toplevel);
     static void handleXdgToplevelConfigure (void *data, struct xdg_toplevel *xdg_toplevel,
                       int32_t width, int32_t height, struct wl_array *states);
@@ -87,8 +90,13 @@ class WaylandWindow
     int mVideoWidth;
     int mVideoHeight;
 
+    //the count display buffer of committed to weston
+    int mCommitCnt;
+
     std::unordered_map<std::size_t, WaylandBuffer *> mWaylandBuffersMap;
     bool mNoBorderUpdate;
+
+    bool mSupportReUseWlBuffer;
 };
 
 #endif /*__WAYLAND_WINDOW_H__*/

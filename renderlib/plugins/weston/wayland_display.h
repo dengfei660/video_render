@@ -125,6 +125,7 @@ class WaylandDisplay : public Tls::Thread{
     RenderVideoFormat mBufferFormat;
 
     mutable Tls::Mutex mBufferMutex;
+    mutable Tls::Mutex mMutex;
     int mFd;
     Tls::Poll *mPoll;
 };

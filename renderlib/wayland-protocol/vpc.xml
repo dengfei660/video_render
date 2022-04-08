@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <protocol name="wl_vpc">
-  
+
     <copyright>
     If not stated otherwise in this file or this component's Licenses.txt file the
     following copyright and licenses apply:
@@ -42,19 +42,19 @@
     THIS SOFTWARE.
   </copyright>
   <interface name="wl_vpc" version="1">
-    
+
     <description summary="Video path control">
       The video path control protocol provides a mechanism for the compositor and client to
       cooperate in the control of the decoding path used for video.  The compositor can
       request the client to use a fully accelerated hardware path or a video-as-graphics
       path.
     </description>
-    
+
     <request name="get_vpc_surface">
       <arg name="id" type="new_id" interface="wl_vpc_surface"/>
       <arg name="surface" type="object" interface="wl_surface"/>
     </request>
-    
+
   </interface>
 
   <interface name="wl_vpc_surface" version="2">

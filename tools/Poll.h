@@ -13,7 +13,7 @@
 /**
  * @brief Poll is a implement wrap about
  * poll,but Poll can wakeup when poll is waiting
- * for ever,if set flushing.
+ * for ever,if set flushing
  * the sequence api is
  * 1.poll = new Poll(true)
  * 2.poll->addfd(fd)
@@ -28,7 +28,6 @@
  * 9.poll->setFlushing
  * 10.delete poll
  */
-
 namespace Tls {
 class Poll {
   public:
@@ -108,8 +107,6 @@ class Poll {
     struct pollfd * mFds;
     int mFdsMaxCnt;
     int mFdsCnt;
-    struct pollfd * mActiveFds;
-    int mActiveFdsCnt;
     bool mControllable;
     std::atomic<int> mControlPending;
     std::atomic<int> mFlushing;

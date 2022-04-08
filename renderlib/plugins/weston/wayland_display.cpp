@@ -16,11 +16,17 @@ void WaylandDisplay::dmabuf_modifiers(void *data, struct zwp_linux_dmabuf_v1 *zw
          uint32_t format, uint32_t modifier_hi, uint32_t modifier_lo)
 {
     WaylandDisplay *self = static_cast<WaylandDisplay *>(data);
+    Tls::Mutex::Autolock _l(self->mMutex);
     if (wl_dmabuf_format_to_video_format (format) != VIDEO_FORMAT_UNKNOWN) {
-        TRACE2("regist dmabuffer format:%d",format);
+        TRACE2("regist dmabuffer format:%d (%s) hi:%x,lo:%x",format,print_dmabuf_format_name(format),modifier_hi,modifier_lo);
         uint64_t modifier = ((uint64_t)modifier_hi << 32) | modifier_lo;
-        std::pair<uint32_t ,uint64_t> item(format, modifier);
-        self->mDmaBufferFormats.insert(item);
+        auto item = self->mDmaBufferFormats.find(format);
+        if (item == self->mDmaBufferFormats.end()) {
+            std::pair<uint32_t ,uint64_t> item(format, modifier);
+            self->mDmaBufferFormats.insert(item);
+        } else { //found format
+            item->second = modifier;
+        }
     }
 }
 
@@ -271,17 +277,19 @@ int WaylandDisplay::toDmaBufferFormat(RenderVideoFormat format, uint32_t *outDma
     }
 
     TRACE1("render video format:%d -> dmabuf format:%d",format,dmaformat);
+    *outDmaformat = (uint32_t)dmaformat;
+
     /*get dmaformat and modifiers*/
-    for (auto& item : mDmaBufferFormats) {
-        if (dmaformat == item.first) {
-            *outDmaformat = (uint32_t)dmaformat;
-            *outDmaformatModifiers = (uint64_t)item.second;
-            return NO_ERROR;
-        }
+    auto item = mDmaBufferFormats.find(dmaformat);
+    if (item == mDmaBufferFormats.end()) { //not found
+        WARNING("Not found dmabuf for render video format :%d",format);
+        *outDmaformatModifiers = 0;
+        return NO_ERROR;
     }
 
-    WARNING("Not found dmabuf for render video format :%d",format);
-    return ERROR_NOT_FOUND;
+    *outDmaformatModifiers = (uint64_t)item->second;
+
+    return NO_ERROR;
 }
 
 int WaylandDisplay::toShmBufferFormat(RenderVideoFormat format, uint32_t *outformat)

@@ -81,9 +81,19 @@ WaylandWindow::WaylandWindow(WaylandDisplay *wlDisplay)
     mVideoViewport = NULL;
     mNoBorderUpdate = false;
     mAreaShmBuffer = NULL;
+    mCommitCnt = 0;
     memset(&mRenderRect, 0, sizeof(struct Rectangle));
     memset(&mVideoRect, 0, sizeof(struct Rectangle));
     memset(&mWindowRect, 0, sizeof(struct Rectangle));
+    mSupportReUseWlBuffer = false;
+    char *env = getenv("VIDEO_RENDER_REUSE_WESTON_WLBUFFER");
+    if (env) {
+        int limit = atoi(env);
+        if (limit > 0) {
+            mSupportReUseWlBuffer = true;
+            INFO("set reuse wl_buffer");
+        }
+    }
 }
 WaylandWindow::~WaylandWindow()
 {
@@ -94,7 +104,6 @@ void WaylandWindow::new_window_common()
 {
     struct wl_region *region;
 
-    //TRACE1("new_window_common");
     mAreaSurface = wl_compositor_create_surface (mDisplay->getCompositor());
     mVideoSurface = wl_compositor_create_surface (mDisplay->getCompositor());
     mAreaSurfaceWrapper = (struct wl_surface *)wl_proxy_create_wrapper (mAreaSurface);
@@ -121,8 +130,6 @@ void WaylandWindow::new_window_common()
     region = wl_compositor_create_region (mDisplay->getCompositor());
     wl_surface_set_input_region (mVideoSurface, region);
     wl_region_destroy (region);
-
-    //TRACE1("new_window_common, end");
 }
 
 void WaylandWindow::new_window_xdg_surface(bool fullscreen)
@@ -401,50 +408,54 @@ void WaylandWindow::displayFrameBuffer(RenderBuffer * buf, int64_t realDisplayTi
             buf->dma.width = mVideoWidth;
             buf->dma.height = mVideoHeight;
         }
-#if REUSE_WAYLAND_BUFFER
-        waylandBuf = findWaylandBuffer(buf);
-        if (waylandBuf == NULL) {
+        if (mSupportReUseWlBuffer) {
+            waylandBuf = findWaylandBuffer(buf);
+            if (waylandBuf == NULL) {
+                waylandBuf = new WaylandBuffer(mDisplay, this);
+                waylandBuf->setRenderRealTime(realDisplayTime);
+                waylandBuf->setBufferFormat(mDisplay->getVideoBufferFormat());
+                ret = waylandBuf->constructWlBuffer(buf);
+                if (ret != NO_ERROR) {
+                    WARNING("dmabufConstructWlBuffer fail,release waylandbuf");
+                    //delete waylanBuf,WaylandBuffer object destruct will call release callback
+                    goto waylandbuf_fail;
+                } else {
+                    addWaylandBuffer(buf, waylandBuf);
+                }
+            } else {
+                waylandBuf->setRenderRealTime(realDisplayTime);
+                ret = waylandBuf->constructWlBuffer(buf);
+                if (ret != NO_ERROR) {
+                    WARNING("dmabufConstructWlBuffer fail,release waylandbuf");
+                    //delete waylanBuf,WaylandBuffer object destruct will call release callback
+                    goto waylandbuf_fail;
+                }
+            }
+        } else {
             waylandBuf = new WaylandBuffer(mDisplay, this);
             waylandBuf->setRenderRealTime(realDisplayTime);
             waylandBuf->setBufferFormat(mDisplay->getVideoBufferFormat());
             ret = waylandBuf->constructWlBuffer(buf);
             if (ret != NO_ERROR) {
                 WARNING("dmabufConstructWlBuffer fail,release waylandbuf");
-                handleBufferReleaseCallback(waylandBuf);
-                delete waylandBuf;
-                waylandBuf = NULL;
-            } else {
-                addWaylandBuffer(buf, waylandBuf);
-            }
-        } else {
-            waylandBuf->setRenderRealTime(realDisplayTime);
-            ret = waylandBuf->constructWlBuffer(buf);
-            if (ret != NO_ERROR) {
-                WARNING("dmabufConstructWlBuffer fail,release waylandbuf");
-                handleBufferReleaseCallback(waylandBuf);
+                goto waylandbuf_fail;
             }
         }
-#else
-        waylandBuf = new WaylandBuffer(mDisplay, this);
-        waylandBuf->setRenderRealTime(realDisplayTime);
-        waylandBuf->setBufferFormat(mDisplay->getVideoBufferFormat());
-        ret = waylandBuf->constructWlBuffer(buf);
-        if (ret != NO_ERROR) {
-            WARNING("dmabufConstructWlBuffer fail,release waylandbuf");
-            mDisplay->getPlugin()->handleBufferRelease(buf);
-            delete waylandBuf;
-            waylandBuf = NULL;
-        }
-#endif
     }
 
     if (waylandBuf) {
         wlbuffer = waylandBuf->getWlBuffer();
     }
     if (wlbuffer) {
+        Tls::Mutex::Autolock _l(mRenderMutex);
+        ++mCommitCnt;
+        uint32_t hiPts = realDisplayTime >> 32;
+        uint32_t lowPts = realDisplayTime & 0xFFFFFFFF;
         //attach this wl_buffer to weston
-        TRACE2("++attach,renderbuf:%p,wl_buffer:%p",buf,wlbuffer);
+        TRACE2("++attach,renderbuf:%p,wl_buffer:%p,commitCnt:%d",buf,wlbuffer,mCommitCnt);
         waylandBuf->attach(mVideoSurfaceWrapper);
+        TRACE1("display time:%lld,hiPts:%d,lowPts:%d",realDisplayTime, hiPts, lowPts);
+        wl_surface_set_pts(mVideoSurfaceWrapper, hiPts, lowPts);
         //wl_surface_attach (mVideoSurfaceWrapper, wlbuffer, 0, 0);
         wl_surface_damage (mVideoSurfaceWrapper, 0, 0, mVideoRect.w, mVideoRect.h);
         wl_surface_commit (mVideoSurfaceWrapper);
@@ -462,12 +473,30 @@ void WaylandWindow::displayFrameBuffer(RenderBuffer * buf, int64_t realDisplayTi
     if (waylandBuf) {
         handleFrameDisplayedCallback(waylandBuf);
     }
+
+    return;
+waylandbuf_fail:
+    WaylandPlugin *plugin = mDisplay->getPlugin();
+    //notify dropped
+    plugin->handleFrameDropped(buf);
+    //notify display that app can count displayed frames
+    plugin->handleFrameDisplayed(buf);
+    //notify app release this buf
+    plugin->handleBufferRelease(buf);
+    //delete waylandbuf
+    delete waylandBuf;
+    waylandBuf = NULL;
+    return;
 }
 
 void WaylandWindow::handleBufferReleaseCallback(WaylandBuffer *buf)
 {
+    {
+        Tls::Mutex::Autolock _l(mRenderMutex);
+        --mCommitCnt;
+    }
     RenderBuffer *renderBuffer = buf->getRenderBuffer();
-    TRACE1("handle release renderBuffer :%p,priv:%p,PTS:%lld,realtime:%lld",renderBuffer,renderBuffer->priv,renderBuffer->pts,buf->getRenderRealTime());
+    TRACE1("handle release renderBuffer :%p,priv:%p,PTS:%lld,realtime:%lld,commitCnt:%d",renderBuffer,renderBuffer->priv,renderBuffer->pts,buf->getRenderRealTime(),mCommitCnt);
     WaylandPlugin *plugin = mDisplay->getPlugin();
     plugin->handleBufferRelease(renderBuffer);
 }

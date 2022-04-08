@@ -59,9 +59,10 @@ void WaylandBuffer::bufferRelease (void *data, struct wl_buffer *wl_buffer)
         waylandBuffer->mWindow->handleBufferReleaseCallback(waylandBuffer);
     }
     waylandBuffer->mRenderBuffer = NULL;
-#if REUSE_WAYLAND_BUFFER == 0
-    delete waylandBuffer;
-#endif
+    //if do not support reuse wl_buffer,we need destroy everytime
+    if (waylandBuffer->mWindow->isSupportReuseWlBuffer() == false) {
+        delete waylandBuffer;
+    }
 }
 
 static const struct wl_buffer_listener buffer_listener = {

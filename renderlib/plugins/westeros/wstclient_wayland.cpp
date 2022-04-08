@@ -473,14 +473,14 @@ void WstClientWayland::getVideoBounds(int *x, int *y, int *w, int *h)
 {
     int vx, vy, vw, vh;
     int frameWidth, frameHeight;
-    int zoomMode;;
+    int zoomMode;
     double contentWidth, contentHeight;
     double roix, roiy, roiw, roih;
     double arf, ard;
     double hfactor= 1.0, vfactor= 1.0;
 
     //do not calculate bounds
-    if(!needBounds()) {
+    if (!needBounds()) {
         *x = mVideoX;
         *y = mVideoY;
         *w = mVideoWidth;
@@ -513,7 +513,7 @@ void WstClientWayland::getVideoBounds(int *x, int *y, int *w, int *h)
         zoomMode= ZOOM_NORMAL;
     }
     if (mPixelAspectRatioChanged ) DEBUG("ard %f arf %f", ard, arf);
-    switch( zoomMode )
+    switch ( zoomMode )
     {
         case ZOOM_NORMAL:
         {

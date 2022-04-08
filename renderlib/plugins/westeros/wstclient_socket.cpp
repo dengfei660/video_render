@@ -49,6 +49,8 @@ bool WstClientSocket::connectToSocket(const char *name)
         goto exit;
     }
 
+    DEBUG("XDG_RUNTIME_DIR=%s",workingDir);
+
     pathNameLen = strlen(workingDir)+strlen("/")+strlen(mName) + 1;
     if ( pathNameLen > (int)sizeof(mAddr.sun_path) )
     {
@@ -74,12 +76,13 @@ bool WstClientSocket::connectToSocket(const char *name)
     rc = connect(mSocketFd, (struct sockaddr *)&mAddr, addressSize );
     if ( rc < 0 )
     {
-        ERROR("wstCreateVideoClientConnection: connect failed for socket: errno %d", errno );
+        ERROR("wstCreateVideoClientConnection: connect failed for socket: errno %d,path:%s", errno,mAddr.sun_path );
         goto exit;
     }
 
     INFO("wstclient socket connected,path:%s",mAddr.sun_path);
 
+    run("wstclientsocket");
     return true;
 
 exit:
@@ -519,6 +522,8 @@ bool WstClientSocket::sendFrameVideoClientConnection(WstBufferInfo *wstBufferInf
         vw = wstRect->w;
         vh = wstRect->h;
 
+        DEBUG("send frame:x:%d,y:%d,w:%d,h:%d", vx, vy, vw, vh);
+
         i = 0;
         mbody[i++] = 'V';
         mbody[i++] = 'S';
@@ -635,7 +640,7 @@ void WstClientSocket::processMessagesVideoClientConnection()
             if ( len >= (mlen+3) )
             {
                 id= m[3];
-                switch( id )
+                switch ( id )
                 {
                     case 'R':
                     if ( mlen >= 5)

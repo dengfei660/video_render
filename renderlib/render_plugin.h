@@ -6,11 +6,13 @@ typedef struct _PluginCallback PluginCallback;
 typedef void (*PluginMsgCallback)(void *handle, int msg, void *detail);
 typedef void (*PluginErrorCallback)(void *handle, int errCode, const char *errDetail);
 typedef void (*PluginBufferReleaseCallback)(void *handle,void *data);
+typedef void (*PluginBufferDisplayedCallback)(void *handle,void *data);
 
 struct _PluginCallback {
     PluginMsgCallback doSendMsgCallback;
     PluginErrorCallback doSendErrorCallback;
     PluginBufferReleaseCallback doBufferReleaseCallback;
+    PluginBufferDisplayedCallback doBufferDisplayedCallback;
 };
 
 enum _PluginErrorCode {
@@ -20,8 +22,14 @@ enum _PluginErrorCode {
     PLUGIN_ERROR_WINDOW_CLOSE_FAIL,
 };
 
+/**
+ * @brief plugin message type
+ * it is used on function PluginMsgCallback, the param detail of PluginMsgCallback
+ * must mapped the message type of value
+ *
+ */
 enum _PluginMsg {
-    PLUGIN_MSG_DISPLAYED    = 200,
+    PLUGIN_MSG_FRAME_DROPED    = 200, //droped frame number,the value is int type
 };
 
 /**
@@ -29,10 +37,10 @@ enum _PluginMsg {
  *
  */
 enum _PluginState {
-	PLUGIN_STATE_IDLE = 0,
-	PLUGIN_STATE_INITED = 1 << 1,
-	PLUGIN_STATE_DISPLAY_OPENED = 1 << 2,
-	PLUGIN_STATE_WINDOW_OPENED = 1 << 3,
+    PLUGIN_STATE_IDLE = 0,
+    PLUGIN_STATE_INITED = 1 << 1,
+    PLUGIN_STATE_DISPLAY_OPENED = 1 << 2,
+    PLUGIN_STATE_WINDOW_OPENED = 1 << 3,
 };
 
 /**
@@ -44,6 +52,8 @@ enum _PluginKey {
     PLUGIN_KEY_WINDOW_SIZE, //value type is PluginRect
     PLUGIN_KEY_FRAME_SIZE, //value type is PluginFrameSize
     PLUGIN_KEY_VIDEO_FORMAT, //value type is uint32_t,detail see RenderVideoFormat that is in render_lib.h
+    PLUGIN_KEY_VIDEO_PIP, //is pip window, int type of value
+    PLUGIN_KEY_VIDEOTUNNEL_ID,//set/get videotunnel instance id when videotunnel plugin is selected
 };
 
 typedef struct {
@@ -142,13 +152,13 @@ class RenderPlugin {
     virtual int flush() = 0;
     /**
      * @brief pause plugin
-     * 
+     *
      * @return int 0 sucess,other fail
      */
     virtual int pause() = 0;
     /**
      * @brief resume plugin
-     * 
+     *
      * @return int 0 sucess,other fail
      */
     virtual int resume() = 0;

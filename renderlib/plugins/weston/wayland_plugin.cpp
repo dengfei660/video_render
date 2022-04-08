@@ -186,6 +186,13 @@ void WaylandPlugin::handleBufferRelease(RenderBuffer *buffer)
 void WaylandPlugin::handleFrameDisplayed(RenderBuffer *buffer)
 {
     if (mCallback) {
-        mCallback->doSendMsgCallback(mUserData, PLUGIN_MSG_DISPLAYED, (void *) buffer);
+        mCallback->doBufferDisplayedCallback(mUserData, (void *)buffer);
+    }
+}
+
+void WaylandPlugin::handleFrameDropped(RenderBuffer *buffer)
+{
+    if (mCallback) {
+        mCallback->doSendMsgCallback(mUserData, PLUGIN_MSG_FRAME_DROPED, (void *)buffer);
     }
 }

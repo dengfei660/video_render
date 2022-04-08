@@ -26,9 +26,6 @@ Poll::Poll(bool controllable)
     mFdsCnt = 0;
     mFdsMaxCnt = 0;
 
-    mActiveFds = NULL;
-    mActiveFdsCnt = 0;
-
     mWaiting.store(0);
     mControlPending.store(0);
     mFlushing.store(0);
@@ -49,11 +46,6 @@ Poll::Poll(bool controllable)
 
 Poll::~Poll()
 {
-    if (mActiveFds) {
-        free(mActiveFds);
-        mActiveFds = NULL;
-    }
-
     if (mControlWriteFd >= 0) {
         close (mControlWriteFd);
     }
@@ -84,11 +76,11 @@ int Poll::addFd(int fd)
             return ERROR_NO_MEMORY;
         }
     }
-
     mFds[mFdsCnt].fd = fd;
     mFds[mFdsCnt].events = POLLERR | POLLNVAL | POLLHUP;
     mFds[mFdsCnt].revents = 0;
     mFdsCnt++;
+
     //DEBUG("mFds:%p,maxcnt:%d,cnt:%d",mFds,mFdsMaxCnt,mFdsCnt);
     return NO_ERROR;
 }
@@ -115,7 +107,7 @@ int Poll::setFdReadable(int fd, bool readable)
         return ERROR_BAD_VALUE;
     }
     if (readable) {
-        pfd->events |= POLLIN;
+        pfd->events |= POLLIN | POLLPRI;
     } else {
         pfd->events &= ~POLLIN;
     }
@@ -142,7 +134,7 @@ int Poll::setFdWritable(int fd, bool writable)
 int Poll::wait(int64_t timeoutNs /*nanosecond*/)
 {
     int oldwaiting;
-    int size = 0;
+    int activecnt = 0;
 
     oldwaiting = mWaiting.load();
 
@@ -156,25 +148,13 @@ int Poll::wait(int64_t timeoutNs /*nanosecond*/)
         goto tag_flushing;
     }
 
-    //lock when set nfds,realloc active nfds
-    {
-        Tls::Mutex::Autolock _l(mMutex);
-        mActiveFdsCnt = mFdsCnt;
-        mActiveFds = (struct pollfd *)realloc(mActiveFds, mActiveFdsCnt*sizeof(struct pollfd));
-        if (!mActiveFds) { //no memory???
-             goto tag_success;
-        }
-        memcpy(mActiveFds, mFds, mActiveFdsCnt*sizeof(struct pollfd));
-        //DEBUG("activefds:%p,mActiveFdsCnt:%d",mActiveFds,mActiveFdsCnt);
-    }
-
     do {
         int64_t t = -1; //nanosecond
         if (timeoutNs > 0) {
             t = timeoutNs;
         }
         //DEBUG("waiting");
-        mActiveFdsCnt = poll(mActiveFds, mActiveFdsCnt, t);
+        activecnt = poll(mFds, mFdsCnt, t);
         //DEBUG("waiting end");
         if (mFlushing.load()) {
             goto tag_flushing;
@@ -183,7 +163,7 @@ int Poll::wait(int64_t timeoutNs /*nanosecond*/)
 
 tag_success:
     mWaiting.fetch_sub(1);
-    return mActiveFdsCnt;
+    return activecnt;
 tag_already_waiting:
     mWaiting.fetch_sub(1);
     errno = EPERM;
@@ -213,9 +193,9 @@ void Poll::setFlushing(bool flushing)
 
 bool Poll::isReadable(int fd)
 {
-    for (int i = 0; i < mActiveFdsCnt; i++) {
-        struct pollfd *pfd = &mActiveFds[i];
-        if (pfd->fd == fd && ((pfd->revents & POLLIN|POLLRDNORM) != 0)) {
+    for (int i = 0; i < mFdsCnt; i++) {
+        //DEBUG("mFds[%d].fd:%d,fd:%d,revent:0x%x,POLLIN:0x%x,POLLRDNORM:0x%x",i,mFds[i].fd,fd,mFds[i].revents,POLLIN,POLLRDNORM);
+        if (mFds[i].fd == fd && ((mFds[i].revents & (POLLIN|POLLRDNORM)) != 0)) {
             return true;
         }
     }
@@ -224,9 +204,8 @@ bool Poll::isReadable(int fd)
 
 bool Poll::isWritable(int fd)
 {
-    for (int i = 0; i < mActiveFdsCnt; i++) {
-        struct pollfd *pfd = &mActiveFds[i];
-        if (pfd->fd == fd && ((pfd->revents & POLLOUT) != 0)) {
+    for (int i = 0; i < mFdsCnt; i++) {
+        if (mFds[i].fd == fd && ((mFds[i].revents & POLLOUT) != 0)) {
             return true;
         }
     }

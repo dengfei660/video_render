@@ -30,6 +30,8 @@ class WstClientPlugin : public RenderPlugin
     void handleBufferRelease(RenderBuffer *buffer);
     //buffer had displayed ,but not release
     void handleFrameDisplayed(RenderBuffer *buffer);
+    //buffer droped callback
+    void handleFrameDropped(RenderBuffer *buffer);
 
     void onWstSocketEvent(WstEvent *event);
 
@@ -59,6 +61,10 @@ class WstClientPlugin : public RenderPlugin
     /*key is buffer id, value is display time*/
     std::unordered_map<int, int64_t> mDisplayedFrameMap;
 
+    bool mIsVideoPip; //if video pip window
+    bool mHasSetVideoPip; //send video pip flag
+
+    bool mHasSetSessionInfo; //send session info flag
     mutable Tls::Mutex mMutex;
     void *mUserData;
     int mState;

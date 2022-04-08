@@ -13,6 +13,9 @@ WstClientPlugin::WstClientPlugin()
     mState(PLUGIN_STATE_IDLE),
     mFullscreen(true)
 {
+    mIsVideoPip = false;
+    mHasSetVideoPip = false;
+    mHasSetSessionInfo = false;
     mBufferFormat = VIDEO_FORMAT_UNKNOWN;
     mWayland = new WstClientWayland(this);
     mWstClientSocket = new WstClientSocket(this);
@@ -36,12 +39,14 @@ WstClientPlugin::~WstClientPlugin()
 void WstClientPlugin::init()
 {
     mWstClientSocket->connectToSocket(DEFAULT_VIDEO_SERVER);
-    mWstClientSocket->run("wstSocket");
     mState = PLUGIN_STATE_INITED;
 }
 
 void WstClientPlugin::release()
 {
+    if (mWstClientSocket) {
+        mWstClientSocket->disconnectFromSocket();
+    }
     mState = PLUGIN_STATE_IDLE;
 }
 
@@ -90,13 +95,12 @@ int WstClientPlugin::openWindow()
     int ret;
 
     DEBUG("openWindow");
-    mWstClientSocket->wstSendLayerVideoClientConnection(false);
-
-    //send session info to server
-    //we use mediasync to sync a/v,so select AV_SYNC_MODE_VIDEO_MONO as av clock
-    mWstClientSocket->sendSessionInfoVideoClientConnection(AV_SYNC_SESSION_V_MONO, AV_SYNC_MODE_VIDEO_MONO);
 
     mState |= PLUGIN_STATE_WINDOW_OPENED;
+    if (mWstClientSocket && mHasSetVideoPip == false) {
+        mWstClientSocket->wstSendLayerVideoClientConnection(mIsVideoPip);
+        mHasSetVideoPip = true;
+    }
 
     DEBUG("openWindow,end");
     return ret;
@@ -108,6 +112,14 @@ int WstClientPlugin::displayFrame(RenderBuffer *buffer, int64_t displayTime)
     WstBufferInfo wstBufferInfo;
     WstRect wstRect;
     int x,y,w,h;
+
+    /*send session info to server
+    we use mediasync to sync a/v,so select AV_SYNC_MODE_VIDEO_MONO as av clock*/
+    if (mHasSetSessionInfo == false) {
+        mWstClientSocket->sendSessionInfoVideoClientConnection(AV_SYNC_SESSION_V_MONO, AV_SYNC_MODE_VIDEO_MONO);
+        mHasSetSessionInfo = true;
+    }
+
 
     mWayland->getVideoBounds(&x, &y, &w, &h);
 
@@ -211,9 +223,6 @@ int WstClientPlugin::closeDisplay()
 
 int WstClientPlugin::closeWindow()
 {
-    if (mWstClientSocket) {
-        mWstClientSocket->disconnectFromSocket();
-    }
     mState &= ~PLUGIN_STATE_WINDOW_OPENED;
     return NO_ERROR;
 }
@@ -250,6 +259,10 @@ int WstClientPlugin::set(int key, void *value)
             mBufferFormat = (RenderVideoFormat) format;
             DEBUG("Set video format :%d",mBufferFormat);
         } break;
+        case PLUGIN_KEY_VIDEO_PIP: {
+            int pip = *(int *) (value);
+            mIsVideoPip = pip > 0? true:false;
+        };
     }
     return NO_ERROR;
 }
@@ -269,7 +282,14 @@ void WstClientPlugin::handleBufferRelease(RenderBuffer *buffer)
 void WstClientPlugin::handleFrameDisplayed(RenderBuffer *buffer)
 {
     if (mCallback) {
-        mCallback->doSendMsgCallback(mUserData, PLUGIN_MSG_DISPLAYED, (void *) buffer);
+        mCallback->doBufferDisplayedCallback(mUserData, (void *)buffer);
+    }
+}
+
+void WstClientPlugin::handleFrameDropped(RenderBuffer *buffer)
+{
+    if (mCallback) {
+        mCallback->doSendMsgCallback(mUserData, PLUGIN_MSG_FRAME_DROPED, (void *)buffer);
     }
 }
 
@@ -301,12 +321,13 @@ void WstClientPlugin::onWstSocketEvent(WstEvent *event)
             RenderBuffer *renderbuffer = (RenderBuffer*) item->second;
             if (renderbuffer) {
                 /*if we can find item in mDisplayedFrameMap,
-                this buffer is drop by westeros server,so we
+                this buffer is dropped by westeros server,so we
                 must call displayed callback*/
                 auto displayFrameItem = mDisplayedFrameMap.find(bufferid);
                 if (displayFrameItem != mDisplayedFrameMap.end()) {
                     mDisplayedFrameMap.erase(bufferid);
                     WARNING("Frame droped,pts:%lld,displaytime:%lld",renderbuffer->pts,(int64_t)displayFrameItem->second);
+                    handleFrameDropped(renderbuffer);
                     handleFrameDisplayed(renderbuffer);
                 }
                 handleBufferRelease(renderbuffer);
@@ -317,6 +338,7 @@ void WstClientPlugin::onWstSocketEvent(WstEvent *event)
             uint64_t frameTime = event->lparam2;
             if (mNumDroppedFrames != event->param) {
                 mNumDroppedFrames = event->param;
+                WARNING("frame dropped cnt:%d",mNumDroppedFrames);
             }
             //update status,if frameTime isn't equal -1LL
             //this buffer had displayed

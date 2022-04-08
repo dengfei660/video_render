@@ -105,6 +105,27 @@ class RenderCore : public Tls::Thread{
      * @param dmabuf
      */
     void releaseDmaBuffer(RenderDmaBuffer *dmabuf);
+    /**
+     * @brief Get the First rendered Audio Pts
+     *
+     * @param pts the First rendered Audio Pts
+     * @return int 0 sucess,other fail
+     */
+    int getFirstAudioPts(int64_t *pts);
+    /**
+     * @brief Get the Current rendering Audio Pts
+     *
+     * @param pts the currint rendering Audio Pts
+     * @return int 0 sucess,other fail
+     */
+    int getCurrentAudioPts(int64_t *pts);
+    /**
+     * @brief Get the Playback Rate
+     *
+     * @param scale the playback rate
+     * @return int 0 sucess,other fail
+     */
+    int getPlaybackRate(float *scale);
     //thread func
     void readyToRun();
     virtual bool threadLoop();
@@ -145,6 +166,7 @@ class RenderCore : public Tls::Thread{
     static void pluginMsgCallback(void *handle, int msg, void *detail);
     static void pluginErrorCallback(void *handle, int errCode, const char *errDetail);
     static void pluginBufferReleaseCallback(void *handle,void *data);
+    static void pluginBufferDisplayedCallback(void *handle,void *data);
   private:
     /**
      * @brief init mediasync when render core received
@@ -166,10 +188,11 @@ class RenderCore : public Tls::Thread{
     int mMediaSynInstID;
     int mDemuxId;
     int mPcrId;
-    sync_mode mSyncmode;
+    int mSyncmode;
     bool mMediaSyncInited;
     bool mMediaSyncConfigureChanged;
-    bool mTunnelmode;
+    bool mMediaSyncTunnelmode;
+    int mMediasyncHasAudio;
 
     bool mPaused;
     bool mFlushing;
@@ -207,6 +230,7 @@ class RenderCore : public Tls::Thread{
     int mFPSDetectAcc;
     //plugin
     RenderPlugin *mPlugin;
+    bool mIsLimitDisplayFrame;
 
     //buffer manager
     int mBufferId;
