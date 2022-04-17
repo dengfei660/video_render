@@ -8,9 +8,7 @@
 #define DEFAULT_VIDEO_SERVER "video"
 
 WstClientPlugin::WstClientPlugin(int logCategory)
-    : mDisplayLock("displaylock"),
-    mRenderLock("renderlock"),
-    mState(PLUGIN_STATE_IDLE),
+    : mState(PLUGIN_STATE_IDLE),
     mFullscreen(true),
     mLogCategory(logCategory)
 {
@@ -170,11 +168,16 @@ int WstClientPlugin::displayFrame(RenderBuffer *buffer, int64_t displayTime)
     }
 
     //storage render buffer to manager
+    mRenderLock.lock();
     std::pair<int, RenderBuffer *> item(buffer->id, buffer);
     mRenderBuffersMap.insert(item);
+    mRenderLock.unlock();
+
     //storage displayed render buffer
+    mDisplayLock.lock();
     std::pair<int, int64_t> displayitem(buffer->id, displayTime);
     mDisplayedFrameMap.insert(displayitem);
+    mDisplayLock.unlock();
 
     return NO_ERROR;
 }
@@ -186,12 +189,7 @@ int WstClientPlugin::flush()
     if (mWstClientSocket) {
         mWstClientSocket->sendFlushVideoClientConnection();
     }
-    //free all obtain render buff
-    for (auto item = mRenderBuffersMap.begin(); item != mRenderBuffersMap.end(); ) {
-        RenderBuffer *renderbuffer = (RenderBuffer*)item->second;
-        mRenderBuffersMap.erase(item++);
-        handleBufferRelease(renderbuffer);
-    }
+
     return NO_ERROR;
 }
 
@@ -319,7 +317,11 @@ void WstClientPlugin::onWstSocketEvent(WstEvent *event)
                 WARNING(mLogCategory,"can't find map Renderbuffer");
                 return ;
             }
-            mRenderBuffersMap.erase(item);
+            //remove had release render buffer
+            mRenderLock.lock();
+            mRenderBuffersMap.erase(bufferid);
+            mRenderLock.unlock();
+
             RenderBuffer *renderbuffer = (RenderBuffer*) item->second;
             if (renderbuffer) {
                 /*if we can find item in mDisplayedFrameMap,
@@ -327,10 +329,11 @@ void WstClientPlugin::onWstSocketEvent(WstEvent *event)
                 must call displayed callback*/
                 auto displayFrameItem = mDisplayedFrameMap.find(bufferid);
                 if (displayFrameItem != mDisplayedFrameMap.end()) {
+                    mDisplayLock.lock();
                     mDisplayedFrameMap.erase(bufferid);
+                    mDisplayLock.unlock();
                     WARNING(mLogCategory,"Frame droped,pts:%lld,displaytime:%lld",renderbuffer->pts,(int64_t)displayFrameItem->second);
                     handleFrameDropped(renderbuffer);
-                    handleFrameDisplayed(renderbuffer);
                 }
                 handleBufferRelease(renderbuffer);
             }
@@ -351,7 +354,12 @@ void WstClientPlugin::onWstSocketEvent(WstEvent *event)
                     WARNING(mLogCategory,"can't find map displayed frame:%lld",frameTime);
                     return ;
                 }
-
+                auto displayItem = mDisplayedFrameMap.find(bufferId);
+                if (displayItem != mDisplayedFrameMap.end()) {
+                    mDisplayLock.lock();
+                    mDisplayedFrameMap.erase(bufferId);
+                    mDisplayLock.unlock();
+                }
                 auto item = mRenderBuffersMap.find(bufferId);
                 if (item != mRenderBuffersMap.end()) {
                     RenderBuffer *renderbuffer = (RenderBuffer*) item->second;
@@ -383,7 +391,6 @@ int WstClientPlugin::getDisplayFrameBufferId(int64_t displayTime)
         int64_t time = (int64_t)item->second;
         if (time == displayTime) {
             bufId = (int)item->first;
-            mDisplayedFrameMap.erase(bufId);
             break;
         }
     }

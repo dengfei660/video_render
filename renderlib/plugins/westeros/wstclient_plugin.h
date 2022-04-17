@@ -3,7 +3,7 @@
 #include "render_plugin.h"
 #include "wstclient_wayland.h"
 #include "wstclient_socket.h"
-#include "Mutex.h"
+#include <mutex>
 
 class WstClientPlugin : public RenderPlugin
 {
@@ -51,8 +51,8 @@ class WstClientPlugin : public RenderPlugin
 
     int mLogCategory;
 
-    mutable Tls::Mutex mDisplayLock;
-    mutable Tls::Mutex mRenderLock;
+    std::mutex mDisplayLock;
+    std::mutex mRenderLock;
     bool mFullscreen; //default true value to full screen show video
 
     int mNumDroppedFrames;

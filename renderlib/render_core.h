@@ -243,6 +243,7 @@ class RenderCore : public Tls::Thread{
     int64_t mLastDisplayRealtime; /*time got from mediasync to display frame*/
     RenderBuffer *mLastRenderBuffer; /*the last display renderbuffer*/
     int64_t mLastDisplaySystemtime; /*the local systemtime displaying last renderbuffer*/
+    int mReleaseFrameCnt;
     int mDropFrameCnt; /*the frame cnt that droped by mediasync*/
     int mDisplayedFrameCnt;
     int mInFrameCnt;

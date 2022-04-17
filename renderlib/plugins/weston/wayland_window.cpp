@@ -537,10 +537,10 @@ void WaylandWindow::videoCenterRect(Rectangle src, Rectangle dst, Rectangle *res
             result->w = dst.w;
             result->h = dst.h;
         }
-  }
+    }
 
-  DEBUG(mLogCategory,"source is %dx%d dest is %dx%d, result is %dx%d with x,y %dx%d",
-      src.w, src.h, dst.w, dst.h, result->w, result->h, result->x, result->y);
+    DEBUG(mLogCategory,"source is %dx%d dest is %dx%d, result is %dx%d with x,y %dx%d",
+        src.w, src.h, dst.w, dst.h, result->w, result->h, result->x, result->y);
 }
 
 void WaylandWindow::updateBorders()

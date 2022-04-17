@@ -46,6 +46,7 @@ RenderCore::RenderCore(int renderlibId, int logCategory)
     mBufferId = 1;
     mLastDisplaySystemtime = 0;
     mWaitAudioAnchorTimeMs = WAIT_AUDIO_TIME_MS;
+    mReleaseFrameCnt = 0;
     mDisplayedFrameCnt = 0;
     mInFrameCnt = 0;
     mMediasyncHasAudio = -1;
@@ -477,6 +478,7 @@ int RenderCore::flush()
     mFlushing = true;
     for (auto item = mRenderBufferQueue.begin(); item != mRenderBufferQueue.end();) {
         RenderBuffer *buf = (RenderBuffer *)*item;
+        pluginBufferDropedCallback(this, buf);
         pluginBufferReleaseCallback(this, buf);
         mRenderBufferQueue.erase(item++);
     }
@@ -628,7 +630,8 @@ void RenderCore::pluginBufferReleaseCallback(void *handle,void *data)
 {
     RenderCore* renderCore = static_cast<RenderCore *>(handle);
     if (renderCore->mCallback) {
-        TRACE1(renderCore->mLogCategory,"release buffer %p, pts:%lld",data,((RenderBuffer *)data)->pts);
+        renderCore->mReleaseFrameCnt += 1;
+        TRACE1(renderCore->mLogCategory,"release buffer %p, pts:%lld,cnt:%d",data,((RenderBuffer *)data)->pts,renderCore->mReleaseFrameCnt);
         renderCore->mCallback->doMsgSend(renderCore->mUserData, MSG_RELEASE_BUFFER, data);
     }
 }
@@ -647,7 +650,7 @@ void RenderCore::pluginBufferDropedCallback(void *handle,void *data)
 {
     RenderCore* renderCore = static_cast<RenderCore *>(handle);
     if (renderCore->mCallback) {
-        renderCore->mDisplayedFrameCnt += 1;
+        renderCore->mDropFrameCnt += 1;
         WARNING(renderCore->mLogCategory,"drop buffer %p, pts:%lld,cnt:%d",data,((RenderBuffer *)data)->pts,renderCore->mDropFrameCnt);
         renderCore->mCallback->doMsgSend(renderCore->mUserData, MSG_DROPED_BUFFER, data);
     }
@@ -780,7 +783,7 @@ void RenderCore::mediaSyncNoTunnelmodeDisplay()
     struct mediasync_video_policy vsyncPolicy;
 
     beforeTimeUs = Tls::Times::getSystemTimeUs();
-    ret = MediaSync_VideoProcess((void*) mMediaSync, buf->pts/1000, mLastDisplayPTS/1000, MEDIASYNC_UNIT_US, &vsyncPolicy);
+    ret = MediaSync_VideoProcess(mMediaSync, buf->pts/1000, mLastDisplayPTS/1000, MEDIASYNC_UNIT_US, &vsyncPolicy);
     if (ret != AM_MEDIASYNC_OK) {
         ERROR(mLogCategory,"Error MediaSync_VideoProcess");
         return;
@@ -839,7 +842,6 @@ void RenderCore::mediaSyncNoTunnelmodeDisplay()
         Tls::Mutex::Autolock _l(mRenderMutex);
         mRenderCondition.waitRelative(mRenderMutex,4);
     } else if (vsyncPolicy.videopolicy == MEDIASYNC_VIDEO_DROP) {
-        mDropFrameCnt += 1;
         mLastDisplayPTS = buf->pts;
         mLastRenderBuffer = buf;
         //mLastDisplayRealtime = vsyncPolicy.param1;

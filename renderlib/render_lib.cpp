@@ -33,11 +33,18 @@ void *render_open_with_tag(char *name, char *userTag)
         category = Logger_set_userTag(renderlibId, tag);
     }
 
-    //set log level
+    //set log file
     char *env = getenv("VIDEO_RENDER_LOG_FILE");
     if (env && strlen(env) > 0) {
         Logger_set_file(env);
         INFO(category,"VIDEO_RENDER_LOG_FILE=%s",env);
+    }
+    //set log level
+    env = getenv("VIDEO_RENDER_LOG_LEVEL");
+    if (env) {
+        int level = atoi(env);
+        Logger_set_level(level);
+        INFO(category,"VIDEO_RENDER_LOG_LEVEL=%d",level);
     }
 
     INFO(category,"build version:%s",VERSION);
