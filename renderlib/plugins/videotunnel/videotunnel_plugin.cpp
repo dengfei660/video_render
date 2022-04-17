@@ -4,12 +4,13 @@
 
 #define TAG "rlib:videotunnel_plugin"
 
-VideoTunnelPlugin::VideoTunnelPlugin()
+VideoTunnelPlugin::VideoTunnelPlugin(int logCategory)
     : mDisplayLock("displaylock"),
+    mLogCategory(logCategory),
     mRenderLock("renderlock"),
     mState(PLUGIN_STATE_IDLE)
 {
-    mVideoTunnel = new VideoTunnelImpl(this);
+    mVideoTunnel = new VideoTunnelImpl(this,logCategory);
 }
 
 VideoTunnelPlugin::~VideoTunnelPlugin()
@@ -50,10 +51,10 @@ int VideoTunnelPlugin::openDisplay()
 {
     int ret;
 
-    DEBUG("openDisplay");
+    DEBUG(mLogCategory,"openDisplay");
 
     mState |= PLUGIN_STATE_DISPLAY_OPENED;
-    DEBUG("openDisplay end");
+    DEBUG(mLogCategory,"openDisplay end");
     return ret;
 }
 
@@ -61,12 +62,12 @@ int VideoTunnelPlugin::openWindow()
 {
     int ret;
 
-    DEBUG("openWindow");
+    DEBUG(mLogCategory,"openWindow");
 
     mVideoTunnel->connect();
     mState |= PLUGIN_STATE_WINDOW_OPENED;
 
-    DEBUG("openWindow,end");
+    DEBUG(mLogCategory,"openWindow,end");
     return ret;
 }
 
@@ -134,11 +135,11 @@ int VideoTunnelPlugin::set(int key, void *value)
         } break;
         case PLUGIN_KEY_VIDEO_FORMAT: {
             int videoFormat = *(int *)(value);
-            DEBUG("Set video format :%d",videoFormat);
+            DEBUG(mLogCategory,"Set video format :%d",videoFormat);
         } break;
         case PLUGIN_KEY_VIDEOTUNNEL_ID: {
             int videotunnelId = *(int *)(value);
-            DEBUG("Set videotunnel id :%d",videotunnelId);
+            DEBUG(mLogCategory,"Set videotunnel id :%d",videotunnelId);
             mVideoTunnel->setVideotunnelId(videotunnelId);
         } break;
     }
@@ -167,6 +168,6 @@ void VideoTunnelPlugin::handleFrameDisplayed(RenderBuffer *buffer)
 void VideoTunnelPlugin::handleFrameDropped(RenderBuffer *buffer)
 {
     if (mCallback) {
-        mCallback->doSendMsgCallback(mUserData, PLUGIN_MSG_FRAME_DROPED, (void *)buffer);
+        mCallback->doBufferDropedCallback(mUserData, (void *)buffer);
     }
 }

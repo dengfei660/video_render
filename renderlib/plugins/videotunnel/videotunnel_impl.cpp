@@ -11,8 +11,9 @@ using namespace Tls;
 #define TAG "rlib:videotunnel_impl"
 
 
-VideoTunnelImpl::VideoTunnelImpl(VideoTunnelPlugin *plugin)
-    : mPlugin(plugin)
+VideoTunnelImpl::VideoTunnelImpl(VideoTunnelPlugin *plugin, int logcategory)
+    : mPlugin(plugin),
+    mLogCategory(logcategory)
 {
     mFd = -1;
     mInstanceId = 0;
@@ -41,7 +42,7 @@ VideoTunnelImpl::~VideoTunnelImpl()
 bool VideoTunnelImpl::connect()
 {
     int ret;
-    DEBUG("in");
+    DEBUG(mLogCategory,"in");
     mRequestStop = false;
     mFd = meson_vt_open();
     if (mFd > 0) {
@@ -51,18 +52,18 @@ bool VideoTunnelImpl::connect()
         ret = meson_vt_connect(mFd, mInstanceId, VT_ROLE_PRODUCER);
         mIsVideoTunnelConnected = true;
     } else {
-        ERROR("open videotunnel fail or alloc id fail");
+        ERROR(mLogCategory,"open videotunnel fail or alloc id fail");
         return false;
     }
-    INFO("vt fd:%d, instance id:%d",mFd,mInstanceId);
-    DEBUG("out");
+    INFO(mLogCategory,"vt fd:%d, instance id:%d",mFd,mInstanceId);
+    DEBUG(mLogCategory,"out");
     return true;
 }
 
 bool VideoTunnelImpl::disconnect()
 {
     mRequestStop = true;
-    DEBUG("in");
+    DEBUG(mLogCategory,"in");
     if (isRunning()) {
         requestExitAndWait();
         mStarted = false;
@@ -70,21 +71,21 @@ bool VideoTunnelImpl::disconnect()
 
     if (mFd > 0) {
         if (mIsVideoTunnelConnected) {
-            INFO("instance id:%d",mInstanceId);
+            INFO(mLogCategory,"instance id:%d",mInstanceId);
             meson_vt_disconnect(mFd, mInstanceId, VT_ROLE_PRODUCER);
             mIsVideoTunnelConnected = false;
         }
         if (mInstanceId >= 0) {
-            INFO("free instance id:%d",mInstanceId);
+            INFO(mLogCategory,"free instance id:%d",mInstanceId);
             //meson_vt_free_id(mFd, mInstanceId);
             mInstanceId = 0;
         }
-        INFO("close vt fd:%d",mFd);
+        INFO(mLogCategory,"close vt fd:%d",mFd);
         meson_vt_close(mFd);
         mFd = -1;
     }
 
-    DEBUG("out");
+    DEBUG(mLogCategory,"out");
     return true;
 }
 
@@ -92,7 +93,7 @@ bool VideoTunnelImpl::displayFrame(RenderBuffer *buf, int64_t displayTime)
 {
     int ret;
     if (mStarted == false) {
-        DEBUG("to run VideoTunnelImpl");
+        DEBUG(mLogCategory,"to run VideoTunnelImpl");
         run("VideoTunnelImpl");
         mStarted = true;
     }
@@ -104,7 +105,7 @@ bool VideoTunnelImpl::displayFrame(RenderBuffer *buf, int64_t displayTime)
     std::pair<int64_t, RenderBuffer *> item(fd0, buf);
     mQueueRenderBufferMap.insert(item);
     ++mQueueFrameCnt;
-    TRACE3("***fd:%d,w:%d,h:%d,displaytime:%lld,commitCnt:%d",buf->dma.fd[0],buf->dma.width,buf->dma.height,displayTime,mQueueFrameCnt);
+    TRACE3(mLogCategory,"***fd:%d,w:%d,h:%d,displaytime:%lld,commitCnt:%d",buf->dma.fd[0],buf->dma.width,buf->dma.height,displayTime,mQueueFrameCnt);
     return true;
 }
 
@@ -146,20 +147,20 @@ bool VideoTunnelImpl::threadLoop()
     RenderBuffer *buffer = NULL;
 
     if (mRequestStop) {
-        DEBUG("request stop");
+        DEBUG(mLogCategory,"request stop");
         return false;
     }
 
     ret = meson_vt_dequeue_buffer(mFd, mInstanceId, &bufferId, &fenceId);
     if (ret != 0) {
         if (mRequestStop) {
-            DEBUG("request stop");
+            DEBUG(mLogCategory,"request stop");
             return false;
         }
         return true;
     }
     if (mRequestStop) {
-        DEBUG("request stop");
+        DEBUG(mLogCategory,"request stop");
         return false;
     }
 
@@ -175,7 +176,7 @@ bool VideoTunnelImpl::threadLoop()
         buffer = (RenderBuffer*) item->second;
         mQueueRenderBufferMap.erase(bufferId);
         --mQueueFrameCnt;
-        TRACE3("***dq buffer fd:%d,commitCnt:%d",bufferId,mQueueFrameCnt);
+        TRACE3(mLogCategory,"***dq buffer fd:%d,commitCnt:%d",bufferId,mQueueFrameCnt);
     }
 
     mPlugin->handleFrameDisplayed(buffer);

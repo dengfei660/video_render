@@ -88,6 +88,8 @@ typedef enum _RenderMsgType {
     MSG_RELEASE_BUFFER   = 100, //the msg type is RenderBuffer
     //frame buffer is displayed
     MSG_DISPLAYED_BUFFER = 101, //the msg type is RenderBuffer
+    //the frame buffer is droped
+    MSG_DROPED_BUFFER = 102,//the msg type is RenderBuffer
 
     //render lib connected failed
     MSG_CONNECTED_FAIL   = 200, //the msg type is string
@@ -230,6 +232,20 @@ typedef enum {
  * @return a handle of render lib , return null if failed
  */
 void *render_open(char *name);
+
+/**
+ * @brief open a render lib,render lib will open a compositer with the special
+ * render name and with a caller tag,this tag can set to NULL,it will equal
+ * render_open
+ *
+ * @param name the render device name
+ * the name value list is:
+ * wayland will open wayland render
+ * videotunnel will open tunnel render
+ * @param userTag a tag print by user defined
+ * @return void* a handle of render lib , return null if failed
+ */
+void *render_open_with_tag(char *name, char *userTag);
 
 /**
  * registe callback to render lib, render device will call
@@ -381,6 +397,16 @@ int render_mediasync_get_current_audio_pts(void *handle, int64_t *pts);
  * @return int 0 success, -1 if failed
  */
 int render_mediasync_get_playback_rate(void *handle, float *scale);
+
+/**
+ * @brief queue pts that output from demux to mediasync for a/v sync
+ *
+ * @param handle a handle of render device that was opened
+ * @param ptsUs the pts that output from demux, the unit is Us
+ * @param size the frame size or 0 if unknow
+ * @return int 0 success, -1 if failed
+ */
+int render_mediasync_queue_demux_pts(void *handle, int64_t ptsUs, uint32_t size);
 
 #ifdef  __cplusplus
 }

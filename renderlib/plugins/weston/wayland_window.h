@@ -15,7 +15,7 @@ class WaylandBuffer;
 class WaylandWindow
 {
   public:
-    WaylandWindow(WaylandDisplay *wlDisplay);
+    WaylandWindow(WaylandDisplay *wlDisplay, int logCatgory);
     virtual ~WaylandWindow();
     int openWindow(bool fullscreen);
     int closeWindow();
@@ -97,6 +97,8 @@ class WaylandWindow
     bool mNoBorderUpdate;
 
     bool mSupportReUseWlBuffer;
+
+    int mLogCategory;
 };
 
 #endif /*__WAYLAND_WINDOW_H__*/

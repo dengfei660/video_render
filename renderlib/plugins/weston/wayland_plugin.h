@@ -8,7 +8,7 @@
 class WaylandPlugin : public RenderPlugin
 {
   public:
-    WaylandPlugin();
+    WaylandPlugin(int logCatgory);
     virtual ~WaylandPlugin();
     virtual void init();
     virtual void release();
@@ -37,6 +37,8 @@ class WaylandPlugin : public RenderPlugin
     WaylandDisplay *mDisplay;
     WaylandWindow *mWindow;
     PluginRect mWinRect;
+
+    int mLogCategory;
 
     mutable Tls::Mutex mDisplayLock;
     mutable Tls::Mutex mRenderLock;

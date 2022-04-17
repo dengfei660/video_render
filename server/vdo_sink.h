@@ -85,6 +85,7 @@ class VDOSink : public Sink, public Tls::Thread {
     void stopEvents();
     SinkManager *mSinkMgr;
     mutable Tls::Mutex mMutex;
+    mutable Tls::Mutex mBufferMutex;
     int mEpollFd;
     int mFrameWidth;
     int mFrameHeight;

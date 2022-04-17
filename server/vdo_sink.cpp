@@ -67,11 +67,11 @@ void VDOSink::handleBufferRelease(void* userData, RenderBuffer *buffer)
     VDOSink *self = static_cast<VDOSink *>(userData);
     BufferInfo * captureBuffer = (BufferInfo *)buffer->priv;
     int index = captureBuffer->bufferId;
-    TRACE3("rb:%p,bi:%p,buffer id:%d,fd:%d",buffer,captureBuffer,index,buffer->dma.fd[0]);
-    Tls::Mutex::Autolock _l(self->mMutex);
+    TRACE3(NO_CATEGERY,"rb:%p,bi:%p,buffer id:%d,fd:%d",buffer,captureBuffer,index,buffer->dma.fd[0]);
+    Tls::Mutex::Autolock _l(self->mBufferMutex);
     //must close vfm dup fd
     for (int i = 0; i < buffer->dma.planeCnt; i++) {
-        TRACE3("close uvm fd:%d dup drm fd:%d",buffer->dma.fd[i]);
+        TRACE3(NO_CATEGERY,"close uvm fd:%d dup drm fd:%d",buffer->dma.fd[i]);
         close(buffer->dma.fd[i]);
     }
 
@@ -90,7 +90,7 @@ VDOSink::VDOSink(SinkManager *sinkMgr, uint32_t vdecPort, uint32_t vdoPort)
     mVdecPort(vdecPort),
     mVdoPort(vdoPort)
 {
-    DEBUG("in,vdecport:%d,vdoport:%d",vdecPort, vdoPort);
+    DEBUG(NO_CATEGERY,"in,vdecport:%d,vdoport:%d",vdecPort, vdoPort);
     mState = STATE_CREATE;
     mFrameWidth = 0;
     mFrameHeight = 0;
@@ -108,12 +108,12 @@ VDOSink::VDOSink(SinkManager *sinkMgr, uint32_t vdecPort, uint32_t vdoPort)
     mHasEvents = false;
     mHasEOSEvents = false;
     mEpollFd = epoll_create(2);
-    DEBUG("out");
+    DEBUG(NO_CATEGERY,"out");
 }
 
 VDOSink::~VDOSink()
 {
-    DEBUG("in");
+    DEBUG(NO_CATEGERY,"in");
     mState = STATE_DESTROY;
     if (mEpollFd > 0) {
         close(mEpollFd);
@@ -132,7 +132,7 @@ VDOSink::~VDOSink()
         delete mRenderlib;
         mRenderlib = NULL;
     }
-    DEBUG("out");
+    DEBUG(NO_CATEGERY,"out");
 }
 
 bool VDOSink::start()
@@ -142,18 +142,18 @@ bool VDOSink::start()
     bool bret;
     char * deviveName = NULL;
 
-    DEBUG("in");
+    DEBUG(NO_CATEGERY,"in");
     Tls::Mutex::Autolock _l(mMutex);
 
     if (mState >= STATE_START) {
-        WARNING("had started");
+        WARNING(NO_CATEGERY,"had started");
         return true;
     }
 
     //open render lib
     bret = mRenderlib->connectRender((char *)COMPOSITOR_NAME, mVdoPort);
     if (!bret) {
-        ERROR("connect to render fail");
+        ERROR(NO_CATEGERY,"connect to render fail");
     }
 
     mRenderlib->setCallback(this, &renderlibCallback);
@@ -161,10 +161,10 @@ bool VDOSink::start()
     mState = STATE_START;
     deviveName = (char *)VOUT_DEVIDE_0;
 
-    DEBUG("Open device:%s",deviveName);
+    DEBUG(NO_CATEGERY,"Open device:%s",deviveName);
     mV4l2Fd = open( deviveName, O_RDWR | O_NONBLOCK | O_CLOEXEC);
     if (mV4l2Fd < 0) {
-        ERROR("open v4l2 device fail,device name:%s",deviveName);
+        ERROR(NO_CATEGERY,"open v4l2 device fail,device name:%s",deviveName);
         return false;
     }
 
@@ -184,10 +184,10 @@ bool VDOSink::start()
     }
 
     //to start run thread
-    DEBUG("to run vdosink thread");
+    DEBUG(NO_CATEGERY,"to run vdosink thread");
     run("vdoSink");
 
-    DEBUG("out");
+    DEBUG(NO_CATEGERY,"out");
     return true;
 
 tag_exit:
@@ -201,13 +201,13 @@ tag_exit:
 
 bool VDOSink::stop()
 {
-    DEBUG("in");
+    DEBUG(NO_CATEGERY,"in");
     if (mState >= STATE_STOP) {
-        WARNING("had stopped");
+        WARNING(NO_CATEGERY,"had stopped");
         return true;
     }
-    //dead lock,when buffer release
-    //Tls::Mutex::Autolock _l(mMutex);
+
+    Tls::Mutex::Autolock _l(mMutex);
     mState = STATE_STOP;
     if (mEpollFd > 0) {
         close(mEpollFd);
@@ -232,9 +232,9 @@ bool VDOSink::stop()
     rc= IOCTL( mV4l2Fd, VIDIOC_STREAMOFF, &type);
     if ( rc < 0 )
     {
-        ERROR("streamoff failed for output: rc %d errno %d", rc, errno );
+        ERROR(NO_CATEGERY,"streamoff failed for output: rc %d errno %d", rc, errno );
     }
-    DEBUG("streamoff success");
+    DEBUG(NO_CATEGERY,"streamoff success");
 
     //first disconnect vdo
     voutDisconnect();
@@ -254,7 +254,7 @@ bool VDOSink::stop()
         mCaptureBuffers = NULL;
     }
 
-    DEBUG("out");
+    DEBUG(NO_CATEGERY,"out");
     return true;
 }
 
@@ -281,10 +281,10 @@ bool VDOSink::voutConnect()
 
     rc = IOCTL(mV4l2Fd, VIDIOC_S_EXT_CTRLS, &ext_controls);
     if (rc < 0) {
-        ERROR("connect vdo fail");
+        ERROR(NO_CATEGERY,"connect vdo fail");
         return false;
     }
-    INFO("Connect vdecPort:%d to vdoPort:%d success",mVdecPort,mVdoPort);
+    INFO(NO_CATEGERY,"Connect vdecPort:%d to vdoPort:%d success",mVdecPort,mVdoPort);
 
     mIsVDOConnected = true;
     return true;
@@ -299,7 +299,7 @@ bool VDOSink::voutDisconnect()
     struct am_v4l2_ext_vdec_vdo_connection vout_con;
 
     if (mV4l2Fd < 0 || !mIsVDOConnected) {
-        ERROR("Error vdo device, fd:%d, isconnect:%d",mV4l2Fd, mIsVDOConnected);
+        ERROR(NO_CATEGERY,"Error vdo device, fd:%d, isconnect:%d",mV4l2Fd, mIsVDOConnected);
         return false;
     }
 
@@ -318,11 +318,11 @@ bool VDOSink::voutDisconnect()
 
     rc = IOCTL(mV4l2Fd, VIDIOC_S_EXT_CTRLS, &ext_controls);
     if (rc < 0) {
-        ERROR("connect vdo fail");
+        ERROR(NO_CATEGERY,"connect vdo fail");
         return false;
     }
 
-    INFO("Disconnect vdecPort:%d to vdoPort:%d success",mVdecPort,mVdoPort);
+    INFO(NO_CATEGERY,"Disconnect vdecPort:%d to vdoPort:%d success",mVdecPort,mVdoPort);
     mIsVDOConnected = false;
     return true;
 }
@@ -338,11 +338,11 @@ void VDOSink::startEvents()
     if ( rc == 0 )
     {
         mHasEvents = true;
-        DEBUG("subscribe source change event success");
+        DEBUG(NO_CATEGERY,"subscribe source change event success");
     }
     else
     {
-        ERROR("source change event subscribe failed rc %d (errno %d)", rc, errno);
+        ERROR(NO_CATEGERY,"source change event subscribe failed rc %d (errno %d)", rc, errno);
     }
 
     memset( &evtsub, 0, sizeof(evtsub));
@@ -351,11 +351,11 @@ void VDOSink::startEvents()
     if ( rc == 0 )
     {
         mHasEOSEvents = true;
-        DEBUG("subscribe eos event success");
+        DEBUG(NO_CATEGERY,"subscribe eos event success");
     }
     else
     {
-        ERROR("eos event subcribe for eos failed rc %d (errno %d)", rc, errno );
+        ERROR(NO_CATEGERY,"eos event subcribe for eos failed rc %d (errno %d)", rc, errno );
     }
 }
 void VDOSink::stopEvents()
@@ -369,10 +369,10 @@ void VDOSink::stopEvents()
     rc= IOCTL(mV4l2Fd, VIDIOC_UNSUBSCRIBE_EVENT, &evtsub );
     if ( rc != 0 )
     {
-        ERROR("event unsubscribe failed rc %d (errno %d)", rc, errno);
+        ERROR(NO_CATEGERY,"event unsubscribe failed rc %d (errno %d)", rc, errno);
         return;
     }
-    DEBUG("unsubscribe event success");
+    DEBUG(NO_CATEGERY,"unsubscribe event success");
 }
 
 bool VDOSink::setBufferFormat()
@@ -384,7 +384,7 @@ bool VDOSink::setBufferFormat()
     }
 
     if (mFrameWidth <= 0 || mFrameHeight <= 0) {
-        WARNING("need get frame width and height");
+        WARNING(NO_CATEGERY,"need get frame width and height");
         return false;
     }
 
@@ -395,7 +395,7 @@ bool VDOSink::setBufferFormat()
     rc= IOCTL( mV4l2Fd, VIDIOC_G_FMT, &mCaptureFmt );
     if ( rc < 0 )
     {
-        ERROR("failed get format for output: rc %d errno %d", rc, errno);
+        ERROR(NO_CATEGERY,"failed get format for output: rc %d errno %d", rc, errno);
     }
 
     mCaptureFmt.fmt.pix.pixelformat = V4L2_PIX_FMT_NV12;
@@ -407,7 +407,7 @@ bool VDOSink::setBufferFormat()
     rc= IOCTL(mV4l2Fd, VIDIOC_S_FMT, &mCaptureFmt );
     if ( rc < 0 )
     {
-        DEBUG("failed to set format for output: rc %d errno %d", rc, errno);
+        DEBUG(NO_CATEGERY,"failed to set format for output: rc %d errno %d", rc, errno);
         return false;
     }
 
@@ -426,7 +426,7 @@ bool VDOSink::setupBuffers()
 
 /*
     if (!mIsSetCaptureFmt) {
-        WARNING("not set capture buffer format");
+        WARNING(NO_CATEGERY,"not set capture buffer format");
         return false;
     }*/
 
@@ -456,22 +456,22 @@ bool VDOSink::setupBuffers()
     rc= IOCTL( mV4l2Fd, VIDIOC_REQBUFS, &reqbuf );
     if ( rc < 0 )
     {
-        ERROR("failed to request %d mmap buffers for capture: rc %d errno %d", neededBuffers, rc, errno);
+        ERROR(NO_CATEGERY,"failed to request %d mmap buffers for capture: rc %d errno %d", neededBuffers, rc, errno);
         goto exit;
     }
 
     mNumCaptureBuffers = reqbuf.count;
-    DEBUG("neededBuffers cnt:%d,req cnt:%d",neededBuffers,reqbuf.count);
+    DEBUG(NO_CATEGERY,"neededBuffers cnt:%d,req cnt:%d",neededBuffers,reqbuf.count);
 
     if ( reqbuf.count < minBufferCnt )
     {
-        ERROR("insufficient buffers: (%d versus %d)", reqbuf.count, neededBuffers );
+        ERROR(NO_CATEGERY,"insufficient buffers: (%d versus %d)", reqbuf.count, neededBuffers );
         goto exit;
     }
 
     mCaptureBuffers = (BufferInfo *)calloc(reqbuf.count, sizeof(BufferInfo));
     if (!mCaptureBuffers) {
-        ERROR("No memory to alloc capturebuffers mgr");
+        ERROR(NO_CATEGERY,"No memory to alloc capturebuffers mgr");
         goto exit;
     }
 
@@ -491,11 +491,11 @@ bool VDOSink::setupBuffers()
         rc= IOCTL( mV4l2Fd, VIDIOC_QUERYBUF, bufOut );
         if ( rc < 0 )
         {
-            ERROR("failed to query input buffer %d: rc %d errno %d", i, rc, errno);
+            ERROR(NO_CATEGERY,"failed to query input buffer %d: rc %d errno %d", i, rc, errno);
             goto exit;
         }
 
-        DEBUG("index: %d bytesUsed %d offset %d length %d flags %08x",
+        DEBUG(NO_CATEGERY,"index: %d bytesUsed %d offset %d length %d flags %08x",
                 bufOut->index, bufOut->bytesused, bufOut->m.offset, bufOut->length, bufOut->flags );
 
         bufStart = mmap( NULL,
@@ -512,7 +512,7 @@ bool VDOSink::setupBuffers()
         }
         else
         {
-            ERROR("failed to mmap buffer %d: errno %d", i, errno);
+            ERROR(NO_CATEGERY,"failed to mmap buffer %d: errno %d", i, errno);
         }
     }
 
@@ -553,7 +553,7 @@ void VDOSink::tearDownBuffers()
         rc= IOCTL( mV4l2Fd, VIDIOC_REQBUFS, &reqbuf );
         if ( rc < 0 )
         {
-            ERROR("failed to release v4l2 buffers for output: rc %d errno %d", rc, errno);
+            ERROR(NO_CATEGERY,"failed to release v4l2 buffers for output: rc %d errno %d", rc, errno);
         }
         mNumCaptureBuffers = 0;
     }
@@ -568,7 +568,7 @@ bool VDOSink::queueAllBuffers()
         rc= IOCTL(mV4l2Fd, VIDIOC_QBUF, &mCaptureBuffers[i].v4l2buf );
         if ( rc < 0 )
         {
-            ERROR("failed to queue buffer: rc %d errno %d", rc, errno);
+            ERROR(NO_CATEGERY,"failed to queue buffer: rc %d errno %d", rc, errno);
             ret = false;
             goto exit;
         }
@@ -587,7 +587,7 @@ bool VDOSink::queueBuffer(int bufIndex)
     rc= IOCTL(mV4l2Fd, VIDIOC_QBUF, &mCaptureBuffers[bufIndex].v4l2buf );
     if ( rc < 0 )
     {
-        ERROR("failed to queue output buffer: rc %d errno %d", rc, errno);
+        ERROR(NO_CATEGERY,"failed to queue output buffer: rc %d errno %d", rc, errno);
         return false;
     }
     mQueuedCaptureBufferCnt += 1;
@@ -603,7 +603,7 @@ int VDOSink::dequeueBuffer()
 
     if ( mDecoderLastFrame )
     {
-        WARNING("had decoded last frame");
+        WARNING(NO_CATEGERY,"had decoded last frame");
         goto exit;
     }
     memset( &buf, 0, sizeof(buf));
@@ -616,11 +616,11 @@ int VDOSink::dequeueBuffer()
         memcpy(&mCaptureBuffers[bufferIndex].v4l2buf, &buf, sizeof(struct v4l2_buffer));
         mCaptureBuffers[bufferIndex].queued = false;
         mQueuedCaptureBufferCnt -= 1;
-        TRACE1("dqbuffer id:%d,start:%p,bytesused:%d",bufferIndex,mCaptureBuffers[bufferIndex].start,mCaptureBuffers[bufferIndex].v4l2buf.bytesused);
+        TRACE1(NO_CATEGERY,"dqbuffer id:%d,start:%p,bytesused:%d",bufferIndex,mCaptureBuffers[bufferIndex].start,mCaptureBuffers[bufferIndex].v4l2buf.bytesused);
     }
     else
     {
-        ERROR("failed to de-queue buffer: rc %d errno %d", rc, errno);
+        ERROR(NO_CATEGERY,"failed to de-queue buffer: rc %d errno %d", rc, errno);
         if ( errno == EPIPE )
         {
             /* Decoding is done: no more capture buffers can be dequeued */
@@ -651,7 +651,7 @@ bool VDOSink::processEvent()
                 (event.u.src_change.changes & V4L2_EVENT_SRC_CH_RESOLUTION) ) {
             struct v4l2_format fmtOut;
 
-            INFO("source change event\n");
+            INFO(NO_CATEGERY,"source change event\n");
             if (!mIsSetCaptureFmt) {
                 memset( &mCaptureFmt, 0, sizeof(struct v4l2_format) );
                 mCaptureFmt.type= V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -660,12 +660,12 @@ bool VDOSink::processEvent()
                 rc= IOCTL( mV4l2Fd, VIDIOC_G_FMT, &mCaptureFmt );
                 if ( rc < 0 )
                 {
-                    ERROR("failed get format for output: rc %d errno %d", rc, errno);
+                    ERROR(NO_CATEGERY,"failed get format for output: rc %d errno %d", rc, errno);
                     return false;
                 }
                 mFrameWidth = mCaptureFmt.fmt.pix.width;
                 mFrameHeight = mCaptureFmt.fmt.pix.height;
-                INFO("frame size %dx%d",mFrameWidth,mFrameHeight);
+                INFO(NO_CATEGERY,"frame size %dx%d",mFrameWidth,mFrameHeight);
                 mRenderlib->setFrameSize(mFrameWidth, mFrameHeight);
                 switch (mCaptureFmt.fmt.pix.pixelformat) {
                     case V4L2_PIX_FMT_NV12: {
@@ -675,7 +675,7 @@ bool VDOSink::processEvent()
                         mRenderlib->setVideoFormat(VIDEO_FORMAT_NV21);
                     } break;
                     default:{
-                        ERROR("Unknow pix format");
+                        ERROR(NO_CATEGERY,"Unknow pix format");
                     }break;
                 }
                 return true;
@@ -684,7 +684,7 @@ bool VDOSink::processEvent()
                 fmtOut.type= V4L2_BUF_TYPE_VIDEO_CAPTURE;
                 rc= IOCTL( mV4l2Fd, VIDIOC_G_FMT, &fmtOut );
                 if (rc != 0) {
-                    ERROR("get fmt failed");
+                    ERROR(NO_CATEGERY,"get fmt failed");
                     return false;
                 }
             }
@@ -699,7 +699,7 @@ bool VDOSink::processEvent()
                 mNeedCaptureRestart = true;
                 mFrameWidth = mCaptureFmt.fmt.pix.width;
                 mFrameHeight = mCaptureFmt.fmt.pix.height;
-                INFO("frame size %dx%d",mFrameWidth,mFrameHeight);
+                INFO(NO_CATEGERY,"frame size %dx%d",mFrameWidth,mFrameHeight);
                 mRenderlib->setFrameSize(mFrameWidth, mFrameHeight);
                 switch (mCaptureFmt.fmt.pix.pixelformat) {
                     case V4L2_PIX_FMT_NV12: {
@@ -709,14 +709,14 @@ bool VDOSink::processEvent()
                         mRenderlib->setVideoFormat(VIDEO_FORMAT_NV21);
                     } break;
                     default:{
-                        ERROR("Unknow pix format");
+                        ERROR(NO_CATEGERY,"Unknow pix format");
                     }break;
                 }
             }
             //copy format
             memcpy(&mCaptureFmt, &fmtOut, sizeof(struct v4l2_format));
         } else if (event.type == V4L2_EVENT_EOS) {
-            INFO("v4l2 decoder eos event\n");
+            INFO(NO_CATEGERY,"v4l2 decoder eos event\n");
             mDecoderEos = true;
         }
     }
@@ -725,7 +725,7 @@ bool VDOSink::processEvent()
 
 void VDOSink::readyToRun()
 {
-    DEBUG("in");
+    DEBUG(NO_CATEGERY,"in");
     bool bret;
     int rc;
 
@@ -736,10 +736,10 @@ void VDOSink::readyToRun()
     rc= IOCTL( mV4l2Fd, VIDIOC_STREAMON, &type);
     if ( rc < 0 )
     {
-        ERROR("streamon failed for output: rc %d errno %d", rc, errno );
+        ERROR(NO_CATEGERY,"streamon failed for output: rc %d errno %d", rc, errno );
     }
 
-    DEBUG("streamon success");
+    DEBUG(NO_CATEGERY,"streamon success");
 
     if (mV4l2Fd >= 0) {
         struct epoll_event event;
@@ -748,7 +748,7 @@ void VDOSink::readyToRun()
         epoll_ctl(mEpollFd, EPOLL_CTL_ADD, mV4l2Fd, &event);
     }
 
-    DEBUG("out");
+    DEBUG(NO_CATEGERY,"out");
 }
 
 bool VDOSink::threadLoop()
@@ -758,17 +758,17 @@ bool VDOSink::threadLoop()
     struct epoll_event epollEvent;
 
     if (mV4l2Fd < 0) {
-        WARNING("Not open v4l2 fd");
+        WARNING(NO_CATEGERY,"Not open v4l2 fd");
         return false;
     }
     if (mState >= STATE_STOP) {
-        INFO("will stop thread");
+        INFO(NO_CATEGERY,"will stop thread");
         return false;
     }
 
     rc = epoll_wait (mEpollFd, &epollEvent, 1, 2000);
     if (rc < 0) {
-        WARNING("epoll error");
+        WARNING(NO_CATEGERY,"epoll error");
         return true;
     } else if (rc == 0) { //timeout
         return true;
@@ -793,7 +793,7 @@ bool VDOSink::threadLoop()
         BufferInfo * captureBuffer = &mCaptureBuffers[bufferIndex];
         RenderBuffer *renderBuf = mRenderlib->allocRenderBuffer();
         if (!renderBuf) {
-            ERROR("render allocate buffer wrap fail");
+            ERROR(NO_CATEGERY,"render allocate buffer wrap fail");
             return true;
         }
         memcpy(&voutDmaBuffer, captureBuffer->start, sizeof(VoutDmaBuffer));
@@ -811,7 +811,7 @@ bool VDOSink::threadLoop()
         for (int i = 0; i < renderBuf->dma.planeCnt; i++) {
             int fdin = voutDmaBuffer.fd[i];
             renderBuf->dma.fd[i] = adaptFd(fdin);
-            TRACE3("fd:%d,dumpfd:%d",fdin,renderBuf->dma.fd[i]);
+            TRACE3(NO_CATEGERY,"fd:%d,dumpfd:%d",fdin,renderBuf->dma.fd[i]);
             renderBuf->dma.stride[i] = voutDmaBuffer.stride[i];
             renderBuf->dma.offset[i] = voutDmaBuffer.offset[i];
             renderBuf->dma.size[i] = voutDmaBuffer.size[i];
@@ -828,7 +828,7 @@ bool VDOSink::threadLoop()
         rc= IOCTL( mV4l2Fd, VIDIOC_STREAMON, &type);
         if ( rc < 0 )
         {
-            ERROR("streamon failed for output: rc %d errno %d", rc, errno );
+            ERROR(NO_CATEGERY,"streamon failed for output: rc %d errno %d", rc, errno );
             return false;
         }
     }
@@ -883,15 +883,15 @@ static int IOCTL( int fd, int request, void* arg )
             case VIDIOC_S_EXT_CTRLS: req = "VIDIOC_S_EXT_CTRLS";break;
             default: req= "NA"; break;
         }
-        TRACE2("ioct( %d, %x ( %s ) )\n", fd, request, req );
+        TRACE2(NO_CATEGERY,"ioct( %d, %x ( %s ) )\n", fd, request, req );
         if ( request == (int)VIDIOC_S_FMT )
         {
             struct v4l2_format *format= (struct v4l2_format*)arg;
-            TRACE2("ioctl: : type %d\n", format->type);
+            TRACE2(NO_CATEGERY,"ioctl: : type %d\n", format->type);
             if ( (format->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) ||
                 (format->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) )
             {
-                TRACE2("ioctl: pix_mp: pixelFormat %X w %d h %d field %d cs %d flg %x num_planes %d p0: sz %d bpl %d p1: sz %d bpl %d\n",
+                TRACE2(NO_CATEGERY,"ioctl: pix_mp: pixelFormat %X w %d h %d field %d cs %d flg %x num_planes %d p0: sz %d bpl %d p1: sz %d bpl %d\n",
                     format->fmt.pix_mp.pixelformat,
                     format->fmt.pix_mp.width,
                     format->fmt.pix_mp.height,
@@ -908,7 +908,7 @@ static int IOCTL( int fd, int request, void* arg )
             else if ( (format->type == V4L2_BUF_TYPE_VIDEO_CAPTURE) ||
                    (format->type == V4L2_BUF_TYPE_VIDEO_OUTPUT) )
             {
-                TRACE2("ioctl: pix: pixelFormat %X w %d h %d field %d bpl %d\n",
+                TRACE2(NO_CATEGERY,"ioctl: pix: pixelFormat %X w %d h %d field %d bpl %d\n",
                     format->fmt.pix.pixelformat,
                     format->fmt.pix.width,
                     format->fmt.pix.height,
@@ -920,24 +920,24 @@ static int IOCTL( int fd, int request, void* arg )
         else if ( request == (int)VIDIOC_REQBUFS )
         {
             struct v4l2_requestbuffers *rb= (struct v4l2_requestbuffers*)arg;
-            TRACE2("ioctl: count %d type %d mem %d\n", rb->count, rb->type, rb->memory);
+            TRACE2(NO_CATEGERY,"ioctl: count %d type %d mem %d\n", rb->count, rb->type, rb->memory);
         }
         else if ( request == (int)VIDIOC_QUERYBUF )
         {
             struct v4l2_buffer *buf= (struct v4l2_buffer*)arg;
-            TRACE2("ioctl: index %d type %d mem %d\n", buf->index, buf->type, buf->memory);
+            TRACE2(NO_CATEGERY,"ioctl: index %d type %d mem %d\n", buf->index, buf->type, buf->memory);
         }
         else if ( request == (int)VIDIOC_S_CTRL )
         {
          struct v4l2_control *control= (struct v4l2_control*)arg;
-         TRACE2("ioctl: ctrl id %d value %d\n", control->id, control->value);
+         TRACE2(NO_CATEGERY,"ioctl: ctrl id %d value %d\n", control->id, control->value);
         }
         else if ( request == (int)VIDIOC_CREATE_BUFS )
         {
             struct v4l2_create_buffers *cb= (struct v4l2_create_buffers*)arg;
             struct v4l2_format *format= &cb->format;
-            TRACE2("ioctl: count %d mem %d\n", cb->count, cb->memory);
-            TRACE2("ioctl: pix_mp: pixelFormat %X w %d h %d num_planes %d p0: sz %d bpl %d p1: sz %d bpl %d\n",
+            TRACE2(NO_CATEGERY,"ioctl: count %d mem %d\n", cb->count, cb->memory);
+            TRACE2(NO_CATEGERY,"ioctl: pix_mp: pixelFormat %X w %d h %d num_planes %d p0: sz %d bpl %d p1: sz %d bpl %d\n",
                  format->fmt.pix_mp.pixelformat,
                  format->fmt.pix_mp.width,
                  format->fmt.pix_mp.height,
@@ -951,7 +951,7 @@ static int IOCTL( int fd, int request, void* arg )
         else if ( request == (int)VIDIOC_QBUF )
         {
             struct v4l2_buffer *buf= (struct v4l2_buffer*)arg;
-            TRACE2("ioctl: buff: index %d q: type %d bytesused %d flags %X field %d mem %x length %d timestamp sec %ld usec %ld\n",
+            TRACE2(NO_CATEGERY,"ioctl: buff: index %d q: type %d bytesused %d flags %X field %d mem %x length %d timestamp sec %ld usec %ld\n",
                     buf->index, buf->type, buf->bytesused, buf->flags, buf->field, buf->memory, buf->length, buf->timestamp.tv_sec, buf->timestamp.tv_usec);
             if ( buf->m.planes &&
                     ( (buf->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) ||
@@ -959,13 +959,13 @@ static int IOCTL( int fd, int request, void* arg )
             {
                 if ( buf->memory == V4L2_MEMORY_DMABUF )
                 {
-                    TRACE2("ioctl: buff: p0 bu %d len %d fd %d doff %d p1 bu %d len %d fd %d doff %d\n",
+                    TRACE2(NO_CATEGERY,"ioctl: buff: p0 bu %d len %d fd %d doff %d p1 bu %d len %d fd %d doff %d\n",
                         buf->m.planes[0].bytesused, buf->m.planes[0].length, buf->m.planes[0].m.fd, buf->m.planes[0].data_offset,
                         buf->m.planes[1].bytesused, buf->m.planes[1].length, buf->m.planes[1].m.fd, buf->m.planes[1].data_offset );
                 }
                 else
                 {
-                    TRACE2("ioctl: buff: p0: bu %d len %d moff %d doff %d p1: bu %d len %d moff %d doff %d\n",
+                    TRACE2(NO_CATEGERY,"ioctl: buff: p0: bu %d len %d moff %d doff %d p1: bu %d len %d moff %d doff %d\n",
                         buf->m.planes[0].bytesused, buf->m.planes[0].length, buf->m.planes[0].m.mem_offset, buf->m.planes[0].data_offset,
                         buf->m.planes[1].bytesused, buf->m.planes[1].length, buf->m.planes[1].m.mem_offset, buf->m.planes[1].data_offset );
                 }
@@ -974,13 +974,13 @@ static int IOCTL( int fd, int request, void* arg )
         else if ( request == (int)VIDIOC_DQBUF )
         {
             struct v4l2_buffer *buf= (struct v4l2_buffer*)arg;
-            //TRACE2("ioctl: buff: index %d s dq: type %d bytesused %d flags %X field %d mem %x length %d timestamp sec %ld usec %ld\n",
+            //TRACE2(NO_CATEGERY,"ioctl: buff: index %d s dq: type %d bytesused %d flags %X field %d mem %x length %d timestamp sec %ld usec %ld\n",
             //    buf->index, buf->type, buf->bytesused, buf->flags, buf->field, buf->memory, buf->length, buf->timestamp.tv_sec, buf->timestamp.tv_usec);
             if ( buf->m.planes &&
                     ( (buf->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) ||
                     (buf->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) ) )
             {
-                TRACE2("ioctl: buff: p0: bu %d len %d moff %d doff %d p1: bu %d len %d moff %d doff %d\n",
+                TRACE2(NO_CATEGERY,"ioctl: buff: p0: bu %d len %d moff %d doff %d p1: bu %d len %d moff %d doff %d\n",
                     buf->m.planes[0].bytesused, buf->m.planes[0].length, buf->m.planes[0].m.mem_offset, buf->m.planes[0].data_offset,
                     buf->m.planes[1].bytesused, buf->m.planes[1].length, buf->m.planes[1].m.mem_offset, buf->m.planes[1].data_offset );
             }
@@ -988,17 +988,17 @@ static int IOCTL( int fd, int request, void* arg )
         else if ( (request == (int)VIDIOC_STREAMON) || (request == (int)VIDIOC_STREAMOFF) )
         {
             int *type= (int*)arg;
-            TRACE2("ioctl: : type %d\n", *type);
+            TRACE2(NO_CATEGERY,"ioctl: : type %d\n", *type);
         }
         else if ( request == (int)VIDIOC_SUBSCRIBE_EVENT )
         {
             struct v4l2_event_subscription *evtsub= (struct v4l2_event_subscription*)arg;
-            TRACE2("ioctl: type %d\n", evtsub->type);
+            TRACE2(NO_CATEGERY,"ioctl: type %d\n", evtsub->type);
         }
         else if ( request == (int)VIDIOC_DECODER_CMD )
         {
             struct v4l2_decoder_cmd *dcmd= (struct v4l2_decoder_cmd*)arg;
-            TRACE2("ioctl: cmd %d\n", dcmd->cmd);
+            TRACE2(NO_CATEGERY,"ioctl: cmd %d\n", dcmd->cmd);
         }
         else if (request == VIDIOC_S_EXT_CTRLS)
         {
@@ -1006,7 +1006,7 @@ static int IOCTL( int fd, int request, void* arg )
             struct v4l2_ext_controls *ext_controls = (struct v4l2_ext_controls *)arg;
             vdo_con = (struct am_v4l2_ext_vdec_vdo_connection *)ext_controls->controls->ptr;
 
-            TRACE2("ioctl: vdo port: %d, vdec port:%d\n", vdo_con->vdo_port, vdo_con->vdec_port);
+            TRACE2(NO_CATEGERY,"ioctl: vdo port: %d, vdec port:%d\n", vdo_con->vdo_port, vdo_con->vdec_port);
         }
     }
 
@@ -1017,18 +1017,18 @@ static int IOCTL( int fd, int request, void* arg )
     {
         if ( rc < 0 )
         {
-            TRACE2("ioctl: ioct( %d, %x ) rc %d errno %d\n", fd, request, rc, errno );
+            TRACE2(NO_CATEGERY,"ioctl: ioct( %d, %x ) rc %d errno %d\n", fd, request, rc, errno );
         }
         else
         {
-            TRACE2("ioctl: ioct( %d, %x ) rc %d\n", fd, request, rc );
+            TRACE2(NO_CATEGERY,"ioctl: ioct( %d, %x ) rc %d\n", fd, request, rc );
             if ( (request == (int)VIDIOC_G_FMT) || (request == (int)VIDIOC_S_FMT) )
             {
                 struct v4l2_format *format= (struct v4l2_format*)arg;
                 if ( (format->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) ||
                     (format->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) )
                 {
-                    TRACE2("ioctl: pix_mp: pixelFormat %X w %d h %d field %d cs %d flg %x num_planes %d p0: sz %d bpl %d p1: sz %d bpl %d\n",
+                    TRACE2(NO_CATEGERY,"ioctl: pix_mp: pixelFormat %X w %d h %d field %d cs %d flg %x num_planes %d p0: sz %d bpl %d p1: sz %d bpl %d\n",
                         format->fmt.pix_mp.pixelformat,
                         format->fmt.pix_mp.width,
                         format->fmt.pix_mp.height,
@@ -1045,7 +1045,7 @@ static int IOCTL( int fd, int request, void* arg )
                 else if ( (format->type == V4L2_BUF_TYPE_VIDEO_CAPTURE) ||
                         (format->type == V4L2_BUF_TYPE_VIDEO_OUTPUT) )
                 {
-                    TRACE2("ioctl: pix: pixelFormat %X w %d h %d field %d bpl %d\n",
+                    TRACE2(NO_CATEGERY,"ioctl: pix: pixelFormat %X w %d h %d field %d bpl %d\n",
                         format->fmt.pix.pixelformat,
                         format->fmt.pix.width,
                         format->fmt.pix.height,
@@ -1057,27 +1057,27 @@ static int IOCTL( int fd, int request, void* arg )
             else if ( request == (int)VIDIOC_REQBUFS )
             {
                 struct v4l2_requestbuffers *rb= (struct v4l2_requestbuffers*)arg;
-                TRACE2("ioctl: count %d type %d mem %d\n", rb->count, rb->type, rb->memory);
+                TRACE2(NO_CATEGERY,"ioctl: count %d type %d mem %d\n", rb->count, rb->type, rb->memory);
             }
             else if ( request == (int)VIDIOC_CREATE_BUFS )
             {
                 struct v4l2_create_buffers *cb= (struct v4l2_create_buffers*)arg;
-                TRACE2("ioctl: index %d count %d mem %d\n", cb->index, cb->count, cb->memory);
+                TRACE2(NO_CATEGERY,"ioctl: index %d count %d mem %d\n", cb->index, cb->count, cb->memory);
             }
             else if ( request == (int)VIDIOC_QUERYBUF )
             {
                 struct v4l2_buffer *buf= (struct v4l2_buffer*)arg;
-                TRACE2("ioctl: index %d type %d flags %X mem %d\n", buf->index, buf->type, buf->flags, buf->memory);
+                TRACE2(NO_CATEGERY,"ioctl: index %d type %d flags %X mem %d\n", buf->index, buf->type, buf->flags, buf->memory);
             }
             else if ( request == (int)VIDIOC_G_CTRL )
             {
                 struct v4l2_control *ctrl= (struct v4l2_control*)arg;
-                TRACE2("ioctl: id %d value %d\n", ctrl->id, ctrl->value);
+                TRACE2(NO_CATEGERY,"ioctl: id %d value %d\n", ctrl->id, ctrl->value);
             }
             else if ( request == (int)VIDIOC_DQBUF )
             {
                 struct v4l2_buffer *buf= (struct v4l2_buffer*)arg;
-                TRACE2("ioctl: buff: index %d f dq: type %d bytesused %d flags %X field %d mem %x length %d seq %d timestamp sec %ld usec %ld\n",
+                TRACE2(NO_CATEGERY,"ioctl: buff: index %d f dq: type %d bytesused %d flags %X field %d mem %x length %d seq %d timestamp sec %ld usec %ld\n",
                     buf->index, buf->type, buf->bytesused, buf->flags, buf->field, buf->memory, buf->length, buf->sequence, buf->timestamp.tv_sec, buf->timestamp.tv_usec);
                 if ( buf->m.planes &&
                     ( (buf->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) ||
@@ -1085,13 +1085,13 @@ static int IOCTL( int fd, int request, void* arg )
                 {
                     if ( buf->memory == V4L2_MEMORY_MMAP )
                     {
-                        TRACE2("ioctl: buff: p0: bu %d len %d moff %d doff %d p1: bu %d len %d moff %d doff %d\n",
+                        TRACE2(NO_CATEGERY,"ioctl: buff: p0: bu %d len %d moff %d doff %d p1: bu %d len %d moff %d doff %d\n",
                             buf->m.planes[0].bytesused, buf->m.planes[0].length, buf->m.planes[0].m.mem_offset, buf->m.planes[0].data_offset,
                             buf->m.planes[1].bytesused, buf->m.planes[1].length, buf->m.planes[1].m.mem_offset, buf->m.planes[1].data_offset );
                     }
                     else if ( buf->memory == V4L2_MEMORY_DMABUF )
                     {
-                        TRACE2("ioctl: buff: p0: bu %d len %d fd %d doff %d p1: bu %d len %d fd %d doff %d\n",
+                        TRACE2(NO_CATEGERY,"ioctl: buff: p0: bu %d len %d fd %d doff %d p1: bu %d len %d fd %d doff %d\n",
                             buf->m.planes[0].bytesused, buf->m.planes[0].length, buf->m.planes[0].m.fd, buf->m.planes[0].data_offset,
                             buf->m.planes[1].bytesused, buf->m.planes[1].length, buf->m.planes[1].m.fd, buf->m.planes[1].data_offset );
                     }
@@ -1100,29 +1100,29 @@ static int IOCTL( int fd, int request, void* arg )
             else if ( request == (int)VIDIOC_ENUM_FRAMESIZES )
             {
                 struct v4l2_frmsizeenum *frmsz= (struct v4l2_frmsizeenum*)arg;
-                TRACE2("ioctl: fmt %x idx %d type %d\n", frmsz->pixel_format, frmsz->index, frmsz->type);
+                TRACE2(NO_CATEGERY,"ioctl: fmt %x idx %d type %d\n", frmsz->pixel_format, frmsz->index, frmsz->type);
                 if ( frmsz->type == V4L2_FRMSIZE_TYPE_DISCRETE )
                 {
-                    TRACE2("ioctl: discrete %dx%d\n", frmsz->discrete.width, frmsz->discrete.height);
+                    TRACE2(NO_CATEGERY,"ioctl: discrete %dx%d\n", frmsz->discrete.width, frmsz->discrete.height);
                 }
                 else if ( frmsz->type == V4L2_FRMSIZE_TYPE_STEPWISE )
                 {
-                    TRACE2("ioctl: stepwise minw %d maxw %d stepw %d minh %d maxh %d steph %d\n",
+                    TRACE2(NO_CATEGERY,"ioctl: stepwise minw %d maxw %d stepw %d minh %d maxh %d steph %d\n",
                         frmsz->stepwise.min_width, frmsz->stepwise.max_width, frmsz->stepwise.step_width,
                         frmsz->stepwise.min_height, frmsz->stepwise.max_height, frmsz->stepwise.step_height );
                 }
                 else
                 {
-                    TRACE2("ioctl: continuous\n");
+                    TRACE2(NO_CATEGERY,"ioctl: continuous\n");
                 }
             }
             else if ( request == (int)VIDIOC_DQEVENT )
             {
                 struct v4l2_event *event= (struct v4l2_event*)arg;
-                TRACE2("ioctl: event: type %d pending %d\n", event->type, event->pending);
+                TRACE2(NO_CATEGERY,"ioctl: event: type %d pending %d\n", event->type, event->pending);
                 if ( event->type == V4L2_EVENT_SOURCE_CHANGE )
                 {
-                    TRACE2("ioctl: changes %X\n", event->u.src_change.changes );
+                    TRACE2(NO_CATEGERY,"ioctl: changes %X\n", event->u.src_change.changes );
                 }
             }
         }
@@ -1135,10 +1135,10 @@ static void dumpRenderBuffer(RenderBuffer * buffer)
     if (!buffer) {
         return;
     }
-    DEBUG("+++++flag:%x,pts:%lld,priv:%p",buffer->flag,buffer->pts,buffer->priv);
-    DEBUG("+++++dma buffer,width:%d,height:%d",buffer->dma.width,buffer->dma.height);
+    DEBUG(NO_CATEGERY,"+++++flag:%x,pts:%lld,priv:%p",buffer->flag,buffer->pts,buffer->priv);
+    DEBUG(NO_CATEGERY,"+++++dma buffer,width:%d,height:%d",buffer->dma.width,buffer->dma.height);
     for (int i = 0; i < buffer->dma.planeCnt; i++) {
-        DEBUG("+++++handle:%d,fd:%d,stride:%d,offset:%d,size:%d",buffer->dma.handle[i],buffer->dma.fd[i],buffer->dma.stride[i],buffer->dma.offset[i],buffer->dma.size[i]);
+        DEBUG(NO_CATEGERY,"+++++handle:%d,fd:%d,stride:%d,offset:%d,size:%d",buffer->dma.handle[i],buffer->dma.fd[i],buffer->dma.stride[i],buffer->dma.offset[i],buffer->dma.size[i]);
     }
 }
 
@@ -1147,9 +1147,9 @@ static void dumpVoutDmaBuffer(VoutDmaBuffer * buffer)
     if (!buffer) {
         return;
     }
-    TRACE3("+++++vout dma buffer,width:%d,height:%d,pixel:%u,pts:%llu",buffer->width,buffer->height,buffer->pixel,buffer->pts);
+    TRACE3(NO_CATEGERY,"+++++vout dma buffer,width:%d,height:%d,pixel:%u,pts:%llu",buffer->width,buffer->height,buffer->pixel,buffer->pts);
     for (int i = 0; i < buffer->planeCnt; i++) {
-        TRACE3("+++++handle:%d,fd:%d,stride:%d,offset:%d,size:%d",buffer->handle[i],buffer->fd[i],buffer->stride[i],buffer->offset[i],buffer->size[i]);
+        TRACE3(NO_CATEGERY,"+++++handle:%d,fd:%d,stride:%d,offset:%d,size:%d",buffer->handle[i],buffer->fd[i],buffer->stride[i],buffer->offset[i],buffer->size[i]);
     }
 }
 

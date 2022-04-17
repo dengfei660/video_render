@@ -30,15 +30,15 @@ using namespace Tls;
 
 RenderServer::RenderServer()
 {
-    DEBUG("in");
+    DEBUG(NO_CATEGERY,"in");
     mMonitorThread = NULL;
     mSinkMgr = new SinkManager();
-    DEBUG("out");
+    DEBUG(NO_CATEGERY,"out");
 }
 
 RenderServer::~RenderServer()
 {
-    DEBUG("in");
+    DEBUG(NO_CATEGERY,"in");
     if (mMonitorThread) {
         delete mMonitorThread;
         mMonitorThread = NULL;
@@ -48,7 +48,7 @@ RenderServer::~RenderServer()
         delete mSinkMgr;
         mSinkMgr = NULL;
     }
-    DEBUG("out");
+    DEBUG(NO_CATEGERY,"out");
 }
 
 
@@ -77,14 +77,14 @@ int main( int argc, char** argv)
     char *env = getenv("VIDEO_RENDER_LOG_FILE");
     if (env && strlen(env) > 0) {
         Logger_set_file(env);
-        INFO("VIDEO_RENDER_LOG_FILE=%s",env);
+        INFO(NO_CATEGERY,"VIDEO_RENDER_LOG_FILE=%s",env);
     }
     //set log level
     env = getenv("VIDEO_RENDER_LOG_LEVEL");
     if (env) {
         int level = atoi(env);
         Logger_set_level(level);
-        INFO("VIDEO_RENDER_LOG_LEVEL=%d",level);
+        INFO(NO_CATEGERY,"VIDEO_RENDER_LOG_LEVEL=%d",level);
     }
     g_renderServer = new RenderServer();
     g_renderServer->createMonitorThread();

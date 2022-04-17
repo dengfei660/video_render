@@ -11,7 +11,7 @@ class WaylandDisplay;
 class WaylandDmaBuffer : public WaylandWLWrap
 {
   public:
-    WaylandDmaBuffer(WaylandDisplay *display);
+    WaylandDmaBuffer(WaylandDisplay *display, int logCategory);
     virtual ~WaylandDmaBuffer();
     virtual struct wl_buffer *getWlBuffer() {
         return mWlBuffer;
@@ -36,5 +36,7 @@ class WaylandDmaBuffer : public WaylandWLWrap
     Tls::Condition mCondition;
     void *mData;
     int mSize;
+
+    int mLogCategory;
 };
 #endif /*__WAYLAND_DMA_H__*/

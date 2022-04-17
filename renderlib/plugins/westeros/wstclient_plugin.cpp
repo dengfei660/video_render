@@ -7,18 +7,19 @@
 
 #define DEFAULT_VIDEO_SERVER "video"
 
-WstClientPlugin::WstClientPlugin()
+WstClientPlugin::WstClientPlugin(int logCategory)
     : mDisplayLock("displaylock"),
     mRenderLock("renderlock"),
     mState(PLUGIN_STATE_IDLE),
-    mFullscreen(true)
+    mFullscreen(true),
+    mLogCategory(logCategory)
 {
     mIsVideoPip = false;
     mHasSetVideoPip = false;
     mHasSetSessionInfo = false;
     mBufferFormat = VIDEO_FORMAT_UNKNOWN;
-    mWayland = new WstClientWayland(this);
-    mWstClientSocket = new WstClientSocket(this);
+    mWayland = new WstClientWayland(this, logCategory);
+    mWstClientSocket = new WstClientSocket(this, logCategory);
 }
 
 WstClientPlugin::~WstClientPlugin()
@@ -33,7 +34,7 @@ WstClientPlugin::~WstClientPlugin()
     }
 
     mState = PLUGIN_STATE_IDLE;
-    TRACE2("deconstruct");
+    TRACE2(mLogCategory,"deconstruct");
 }
 
 void WstClientPlugin::init()
@@ -68,41 +69,42 @@ int WstClientPlugin::releaseDmaBuffer(int dmafd)
 
 int WstClientPlugin::openDisplay()
 {
-    int ret;
+    int ret = NO_ERROR;
 
-    DEBUG("openDisplay");
+    DEBUG(mLogCategory,"openDisplay");
     ret =  mWayland->connectToWayland();
     if (ret != NO_ERROR) {
-        ERROR("Error open display");
+        ERROR(mLogCategory,"Error open display");
         if (mCallback) {
-            std::string errString = "open wayland display fail";
-            mCallback->doSendErrorCallback(mUserData, PLUGIN_ERROR_DISPLAY_OPEN_FAIL,errString.c_str());
+            char errString[] = "open wayland display fail";
+            mCallback->doSendMsgCallback(mUserData, PLUGIN_MSG_DISPLAY_OPEN_FAIL,errString);
         }
-        return ret;
+    } else {
+        //run wl display queue dispatch
+        DEBUG(mLogCategory,"To run wl display dispatch queue");
+        mWayland->run("display queue");
     }
+
     mState |= PLUGIN_STATE_DISPLAY_OPENED;
 
-    //run wl display queue dispatch
-    DEBUG("To run wl display dispatch queue");
-    mWayland->run("display queue");
-
-    DEBUG("openDisplay end");
-    return ret;
+    DEBUG(mLogCategory,"openDisplay end");
+    return NO_ERROR;
 }
 
 int WstClientPlugin::openWindow()
 {
     int ret;
 
-    DEBUG("openWindow");
+    DEBUG(mLogCategory,"openWindow");
 
     mState |= PLUGIN_STATE_WINDOW_OPENED;
     if (mWstClientSocket && mHasSetVideoPip == false) {
-        mWstClientSocket->wstSendLayerVideoClientConnection(mIsVideoPip);
+        mWstClientSocket->sendLayerVideoClientConnection(mIsVideoPip);
+        mWstClientSocket->sendResourceVideoClientConnection(mIsVideoPip);
         mHasSetVideoPip = true;
     }
 
-    DEBUG("openWindow,end");
+    DEBUG(mLogCategory,"openWindow,end");
     return ret;
 }
 
@@ -137,7 +139,7 @@ int WstClientPlugin::displayFrame(RenderBuffer *buffer, int64_t displayTime)
         wstBufferInfo.planeInfo[i].fd = buffer->dma.fd[i];
         wstBufferInfo.planeInfo[i].stride = buffer->dma.stride[i];
         wstBufferInfo.planeInfo[i].offset = buffer->dma.offset[i];
-        TRACE1("buffer id:%d,plane[%d],fd:%d,stride:%d,offset:%d",buffer->id,i,buffer->dma.fd[i],buffer->dma.stride[i],buffer->dma.offset[i]);
+        TRACE1(mLogCategory,"buffer id:%d,plane[%d],fd:%d,stride:%d,offset:%d",buffer->id,i,buffer->dma.fd[i],buffer->dma.stride[i],buffer->dma.offset[i]);
     }
 
     wstBufferInfo.frameWidth = buffer->dma.width;
@@ -150,7 +152,7 @@ int WstClientPlugin::displayFrame(RenderBuffer *buffer, int64_t displayTime)
     } else if (mBufferFormat == VIDEO_FORMAT_NV21) {
         wstBufferInfo.pixelFormat = V4L2_PIX_FMT_NV21;
     } else {
-        ERROR("unknow video buffer format:%d",mBufferFormat);
+        ERROR(mLogCategory,"unknow video buffer format:%d",mBufferFormat);
     }
 
     wstRect.x = x;
@@ -161,7 +163,7 @@ int WstClientPlugin::displayFrame(RenderBuffer *buffer, int64_t displayTime)
     if (mWstClientSocket) {
         ret = mWstClientSocket->sendFrameVideoClientConnection(&wstBufferInfo, &wstRect);
         if (!ret) {
-            ERROR("send video frame to server fail");
+            ERROR(mLogCategory,"send video frame to server fail");
             handleBufferRelease(buffer);
             return ERROR_FAILED_TRANSACTION;
         }
@@ -180,7 +182,7 @@ int WstClientPlugin::displayFrame(RenderBuffer *buffer, int64_t displayTime)
 int WstClientPlugin::flush()
 {
     int ret;
-    INFO("flush");
+    INFO(mLogCategory,"flush");
     if (mWstClientSocket) {
         mWstClientSocket->sendFlushVideoClientConnection();
     }
@@ -196,7 +198,7 @@ int WstClientPlugin::flush()
 int WstClientPlugin::pause()
 {
     int ret;
-    INFO("pause");
+    INFO(mLogCategory,"pause");
     if (mWstClientSocket) {
         mWstClientSocket->sendPauseVideoClientConnection(true);
     }
@@ -206,7 +208,7 @@ int WstClientPlugin::pause()
 int WstClientPlugin::resume()
 {
     int ret;
-    INFO("resume");
+    INFO(mLogCategory,"resume");
     if (mWstClientSocket) {
         mWstClientSocket->sendPauseVideoClientConnection(false);
     }
@@ -245,7 +247,7 @@ int WstClientPlugin::set(int key, void *value)
             if (mWayland && (mState & PLUGIN_STATE_WINDOW_OPENED)) {
                 mWayland->setWindowSize(mWinRect.x, mWinRect.y, mWinRect.w, mWinRect.h);
             } else {
-                WARNING("Window had not opened");
+                WARNING(mLogCategory,"Window had not opened");
             }
         } break;
         case PLUGIN_KEY_FRAME_SIZE: {
@@ -257,7 +259,7 @@ int WstClientPlugin::set(int key, void *value)
         case PLUGIN_KEY_VIDEO_FORMAT: {
             int format = *(int *)(value);
             mBufferFormat = (RenderVideoFormat) format;
-            DEBUG("Set video format :%d",mBufferFormat);
+            DEBUG(mLogCategory,"Set video format :%d",mBufferFormat);
         } break;
         case PLUGIN_KEY_VIDEO_PIP: {
             int pip = *(int *) (value);
@@ -289,7 +291,7 @@ void WstClientPlugin::handleFrameDisplayed(RenderBuffer *buffer)
 void WstClientPlugin::handleFrameDropped(RenderBuffer *buffer)
 {
     if (mCallback) {
-        mCallback->doSendMsgCallback(mUserData, PLUGIN_MSG_FRAME_DROPED, (void *)buffer);
+        mCallback->doBufferDropedCallback(mUserData, (void *)buffer);
     }
 }
 
@@ -307,14 +309,14 @@ void WstClientPlugin::onWstSocketEvent(WstEvent *event)
     {
         case WST_REFRESH_RATE: {
             int rate = event->param;
-            INFO("refresh rate:%d",rate);
+            INFO(mLogCategory,"refresh rate:%d",rate);
         } break;
         case WST_BUFFER_RELEASE: {
             int bufferid = event->param;
-            TRACE2("Buffer release id:%d",bufferid);
+            TRACE2(mLogCategory,"Buffer release id:%d",bufferid);
             auto item = mRenderBuffersMap.find(bufferid);
             if (item == mRenderBuffersMap.end()) {
-                WARNING("can't find map Renderbuffer");
+                WARNING(mLogCategory,"can't find map Renderbuffer");
                 return ;
             }
             mRenderBuffersMap.erase(item);
@@ -326,7 +328,7 @@ void WstClientPlugin::onWstSocketEvent(WstEvent *event)
                 auto displayFrameItem = mDisplayedFrameMap.find(bufferid);
                 if (displayFrameItem != mDisplayedFrameMap.end()) {
                     mDisplayedFrameMap.erase(bufferid);
-                    WARNING("Frame droped,pts:%lld,displaytime:%lld",renderbuffer->pts,(int64_t)displayFrameItem->second);
+                    WARNING(mLogCategory,"Frame droped,pts:%lld,displaytime:%lld",renderbuffer->pts,(int64_t)displayFrameItem->second);
                     handleFrameDropped(renderbuffer);
                     handleFrameDisplayed(renderbuffer);
                 }
@@ -338,7 +340,7 @@ void WstClientPlugin::onWstSocketEvent(WstEvent *event)
             uint64_t frameTime = event->lparam2;
             if (mNumDroppedFrames != event->param) {
                 mNumDroppedFrames = event->param;
-                WARNING("frame dropped cnt:%d",mNumDroppedFrames);
+                WARNING(mLogCategory,"frame dropped cnt:%d",mNumDroppedFrames);
             }
             //update status,if frameTime isn't equal -1LL
             //this buffer had displayed
@@ -346,7 +348,7 @@ void WstClientPlugin::onWstSocketEvent(WstEvent *event)
                 mLastDisplayFramePTS = frameTime;
                 int bufferId = getDisplayFrameBufferId(frameTime);
                 if (bufferId < 0) {
-                    WARNING("can't find map displayed frame:%lld",frameTime);
+                    WARNING(mLogCategory,"can't find map displayed frame:%lld",frameTime);
                     return ;
                 }
 

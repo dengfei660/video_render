@@ -7,7 +7,7 @@
 class VideoTunnelPlugin : public RenderPlugin
 {
   public:
-    VideoTunnelPlugin();
+    VideoTunnelPlugin(int category);
     virtual ~VideoTunnelPlugin();
     virtual void init();
     virtual void release();
@@ -35,6 +35,8 @@ class VideoTunnelPlugin : public RenderPlugin
     PluginCallback *mCallback;
     VideoTunnelImpl *mVideoTunnel;
     PluginRect mWinRect;
+
+    int mLogCategory;
 
     mutable Tls::Mutex mDisplayLock;
     mutable Tls::Mutex mRenderLock;

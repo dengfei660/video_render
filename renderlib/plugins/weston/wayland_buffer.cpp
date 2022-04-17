@@ -22,9 +22,10 @@
 
 #define TAG "wayland_buffer"
 
-WaylandBuffer::WaylandBuffer(WaylandDisplay *display, WaylandWindow *window)
+WaylandBuffer::WaylandBuffer(WaylandDisplay *display, WaylandWindow *window, int logCategory)
     : mDisplay(display),
-    mWindow(window)
+    mWindow(window),
+    mLogCategory(logCategory)
 {
     mRenderBuffer = NULL;
     mWaylandWlWrap = NULL;
@@ -51,7 +52,7 @@ WaylandBuffer::~WaylandBuffer()
 void WaylandBuffer::bufferRelease (void *data, struct wl_buffer *wl_buffer)
 {
     WaylandBuffer* waylandBuffer = static_cast<WaylandBuffer*>(data);
-    TRACE1("--wl_buffer:%p,renderBuffer:%p",wl_buffer,waylandBuffer->mRenderBuffer);
+    TRACE1(waylandBuffer->mLogCategory,"--wl_buffer:%p,renderBuffer:%p",wl_buffer,waylandBuffer->mRenderBuffer);
     waylandBuffer->mUsedByCompositor = false;
     //sometimes this callback be called twice
     //this cause double free,so check mRenderBuffer
@@ -74,7 +75,7 @@ so we do not use this callback to count displayed frames*/
 void WaylandBuffer::frameDisplayedCallback(void *data, struct wl_callback *callback, uint32_t time)
 {
     WaylandBuffer* waylandBuffer = static_cast<WaylandBuffer*>(data);
-    TRACE2("**frame redraw callback,wl_buffer:%p,renderBuffer:%p,time:%d",
+    TRACE2(waylandBuffer->mLogCategory,"**frame redraw callback,wl_buffer:%p,renderBuffer:%p,time:%d",
         waylandBuffer->getWlBuffer(),waylandBuffer->getRenderBuffer(),time);
 
     if (waylandBuffer->mRenderBuffer) {
@@ -99,11 +100,11 @@ int WaylandBuffer::constructWlBuffer(RenderBuffer *buf)
 
     if (buf->flag & BUFFER_FLAG_ALLOCATE_DMA_BUFFER ||
             buf->flag & BUFFER_FLAG_EXTER_DMA_BUFFER) {
-        WaylandDmaBuffer *waylanddma = new WaylandDmaBuffer(mDisplay);
+        WaylandDmaBuffer *waylanddma = new WaylandDmaBuffer(mDisplay, mLogCategory);
         wlbuffer = waylanddma->constructWlBuffer(&buf->dma, mBufferFormat);
         if (!wlbuffer) {
             delete waylanddma;
-            ERROR("create wl_buffer fail");
+            ERROR(mLogCategory,"create wl_buffer fail");
             return ERROR_INVALID_OPERATION;
         }
         mWaylandWlWrap = waylanddma;
@@ -129,7 +130,7 @@ void WaylandBuffer::attach(struct wl_surface *surface)
     struct wl_callback *callback;
     struct wl_buffer *wlbuffer = NULL;
     if (mUsedByCompositor) {
-        DEBUG("buffer used by compositor");
+        DEBUG(mLogCategory,"buffer used by compositor");
         return;
     }
 

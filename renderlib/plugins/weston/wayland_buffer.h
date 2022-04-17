@@ -21,7 +21,7 @@ class WaylandWindow;
  */
 class WaylandBuffer {
   public:
-    WaylandBuffer(WaylandDisplay *display, WaylandWindow *window);
+    WaylandBuffer(WaylandDisplay *display, WaylandWindow *window, int logCategory);
     virtual ~WaylandBuffer();
     int constructWlBuffer(RenderBuffer *buf);
     void setUsedByCompositor(bool used);
@@ -53,6 +53,7 @@ class WaylandBuffer {
     static void bufferRelease (void *data, struct wl_buffer *wl_buffer);
     static void frameDisplayedCallback(void *data, struct wl_callback *callback, uint32_t time);
   private:
+    int mLogCategory;
     WaylandDisplay *mDisplay;
     WaylandWindow *mWindow;
     RenderBuffer *mRenderBuffer;

@@ -18,7 +18,7 @@ void WaylandDisplay::dmabuf_modifiers(void *data, struct zwp_linux_dmabuf_v1 *zw
     WaylandDisplay *self = static_cast<WaylandDisplay *>(data);
     Tls::Mutex::Autolock _l(self->mMutex);
     if (wl_dmabuf_format_to_video_format (format) != VIDEO_FORMAT_UNKNOWN) {
-        TRACE2("regist dmabuffer format:%d (%s) hi:%x,lo:%x",format,print_dmabuf_format_name(format),modifier_hi,modifier_lo);
+        TRACE2(self->mLogCategory,"regist dmabuffer format:%d (%s) hi:%x,lo:%x",format,print_dmabuf_format_name(format),modifier_hi,modifier_lo);
         uint64_t modifier = ((uint64_t)modifier_hi << 32) | modifier_lo;
         auto item = self->mDmaBufferFormats.find(format);
         if (item == self->mDmaBufferFormats.end()) {
@@ -38,7 +38,7 @@ WaylandDisplay::dmaBufferFormat (void *data, struct zwp_linux_dmabuf_v1 *zwp_lin
     WaylandDisplay *self = static_cast<WaylandDisplay *>(data);
 
     if (wl_dmabuf_format_to_video_format (format) != VIDEO_FORMAT_UNKNOWN) {
-        TRACE1("regist dmabuffer format:%d : %s",format);
+        TRACE1(mLogCategory,"regist dmabuffer format:%d : %s",format);
         //self->mDmaBufferFormats.push_back(format);
     }
 #endif
@@ -76,7 +76,7 @@ WaylandDisplay::registryHandleGlobal (void *data, struct wl_registry *registry,
     uint32_t id, const char *interface, uint32_t version)
 {
     WaylandDisplay *self = static_cast<WaylandDisplay *>(data);
-    TRACE1("registryHandleGlobal,interface:%s,version:%d",interface,version);
+    TRACE1(self->mLogCategory,"registryHandleGlobal,interface:%s,version:%d",interface,version);
 
     if (strcmp (interface, "wl_compositor") == 0) {
         self->mCompositor = (struct wl_compositor *)wl_registry_bind (registry, id, &wl_compositor_interface, 1/*MIN (version, 3)*/);
@@ -104,8 +104,9 @@ WaylandDisplay::registryHandleGlobal (void *data, struct wl_registry *registry,
 void
 WaylandDisplay::registryHandleGlobalRemove (void *data, struct wl_registry *registry, uint32_t name)
 {
+    WaylandDisplay *self = static_cast<WaylandDisplay *>(data);
     /* temporarily do nothing */
-    DEBUG("wayland display remove registry handle global");
+    DEBUG(self->mLogCategory,"wayland display remove registry handle global");
 }
 
 static const struct wl_registry_listener registry_listener = {
@@ -113,11 +114,12 @@ static const struct wl_registry_listener registry_listener = {
   WaylandDisplay::registryHandleGlobalRemove
 };
 
-WaylandDisplay::WaylandDisplay(WaylandPlugin *plugin)
+WaylandDisplay::WaylandDisplay(WaylandPlugin *plugin, int logCategory)
     :mBufferMutex("bufferMutex"),
-    mWaylandPlugin(plugin)
+    mWaylandPlugin(plugin),
+    mLogCategory(logCategory)
 {
-    TRACE2("construct WaylandDisplay");
+    TRACE2(mLogCategory,"construct WaylandDisplay");
     mWlDisplay = NULL;
     mWlDisplayWrapper = NULL;
     mWlQueue = NULL;
@@ -132,7 +134,7 @@ WaylandDisplay::WaylandDisplay(WaylandPlugin *plugin)
 
 WaylandDisplay::~WaylandDisplay()
 {
-    TRACE2("desconstruct WaylandDisplay");
+    TRACE2(mLogCategory,"desconstruct WaylandDisplay");
     if (mPoll) {
         delete mPoll;
         mPoll = NULL;
@@ -142,7 +144,7 @@ WaylandDisplay::~WaylandDisplay()
 char *WaylandDisplay::require_xdg_runtime_dir()
 {
     char *val = getenv("XDG_RUNTIME_DIR");
-    INFO("XDG_RUNTIME_DIR=%s",val);
+    INFO(mLogCategory,"XDG_RUNTIME_DIR=%s",val);
 
     return val;
 }
@@ -150,11 +152,11 @@ char *WaylandDisplay::require_xdg_runtime_dir()
 int WaylandDisplay::openDisplay()
 {
     char *name = require_xdg_runtime_dir();
-    //DEBUG("name:%s",name);
-    DEBUG("openDisplay in");
+    //DEBUG(mLogCategory,"name:%s",name);
+    DEBUG(mLogCategory,"openDisplay in");
     mWlDisplay = wl_display_connect(NULL);
     if (!mWlDisplay) {
-        FATAL("Failed to connect to the wayland display, XDG_RUNTIME_DIR='%s'",
+        FATAL(mLogCategory,"Failed to connect to the wayland display, XDG_RUNTIME_DIR='%s'",
         name ? name : "NULL");
         return ERROR_OPEN_FAIL;
     }
@@ -169,19 +171,19 @@ int WaylandDisplay::openDisplay()
     /* we need exactly 2 roundtrips to discover global objects and their state */
     for (int i = 0; i < 2; i++) {
         if (wl_display_roundtrip_queue (mWlDisplay, mWlQueue) < 0) {
-            FATAL("Error communicating with the wayland display");
+            FATAL(mLogCategory,"Error communicating with the wayland display");
             return ERROR_OPEN_FAIL;
         }
     }
 
     if (!mCompositor) {
-        FATAL("Could not bind to wl_compositor. Either it is not implemented in " \
+        FATAL(mLogCategory,"Could not bind to wl_compositor. Either it is not implemented in " \
         "the compositor, or the implemented version doesn't match");
         return ERROR_OPEN_FAIL;
     }
 
     if (!mDmabuf) {
-        FATAL("Could not bind to zwp_linux_dmabuf_v1");
+        FATAL(mLogCategory,"Could not bind to zwp_linux_dmabuf_v1");
         return ERROR_OPEN_FAIL;
     }
 
@@ -190,21 +192,21 @@ int WaylandDisplay::openDisplay()
         * wl_shell, xdg_shell and zwp_fullscreen_shell are not used.
         * In this case is correct to continue.
         */
-        FATAL("Could not bind to either wl_shell, xdg_wm_base or "
+        FATAL(mLogCategory,"Could not bind to either wl_shell, xdg_wm_base or "
             "zwp_fullscreen_shell, video display may not work properly.");
         return ERROR_OPEN_FAIL;
     }
 
-    DEBUG("openDisplay out");
+    DEBUG(mLogCategory,"openDisplay out");
     return NO_ERROR;
 }
 
 void WaylandDisplay::closeDisplay()
 {
-    DEBUG("closeDisplay in");
+    DEBUG(mLogCategory,"closeDisplay in");
 
    if (isRunning()) {
-        TRACE1("try stop dispatch thread");
+        TRACE1(mLogCategory,"try stop dispatch thread");
         if (mPoll) {
             mPoll->setFlushing(true);
         }
@@ -257,13 +259,13 @@ void WaylandDisplay::closeDisplay()
         mWlDisplay = NULL;
     }
 
-    DEBUG("closeDisplay out");
+    DEBUG(mLogCategory,"closeDisplay out");
 }
 
 int WaylandDisplay::toDmaBufferFormat(RenderVideoFormat format, uint32_t *outDmaformat /*out param*/, uint64_t *outDmaformatModifiers /*out param*/)
 {
     if (!outDmaformat || !outDmaformatModifiers) {
-        WARNING("NULL params");
+        WARNING(mLogCategory,"NULL params");
         return ERROR_PARAM_NULL;
     }
 
@@ -272,17 +274,17 @@ int WaylandDisplay::toDmaBufferFormat(RenderVideoFormat format, uint32_t *outDma
 
     uint32_t dmaformat = video_format_to_wl_dmabuf_format (format);
     if (dmaformat == -1) {
-        ERROR("Error not found render video format:%d to wl dmabuf format",format);
+        ERROR(mLogCategory,"Error not found render video format:%d to wl dmabuf format",format);
         return ERROR_NOT_FOUND;
     }
 
-    TRACE1("render video format:%d -> dmabuf format:%d",format,dmaformat);
+    TRACE1(mLogCategory,"render video format:%d -> dmabuf format:%d",format,dmaformat);
     *outDmaformat = (uint32_t)dmaformat;
 
     /*get dmaformat and modifiers*/
     auto item = mDmaBufferFormats.find(dmaformat);
     if (item == mDmaBufferFormats.end()) { //not found
-        WARNING("Not found dmabuf for render video format :%d",format);
+        WARNING(mLogCategory,"Not found dmabuf for render video format :%d",format);
         *outDmaformatModifiers = 0;
         return NO_ERROR;
     }
@@ -295,7 +297,7 @@ int WaylandDisplay::toDmaBufferFormat(RenderVideoFormat format, uint32_t *outDma
 int WaylandDisplay::toShmBufferFormat(RenderVideoFormat format, uint32_t *outformat)
 {
     if (!outformat) {
-        WARNING("NULL params");
+        WARNING(mLogCategory,"NULL params");
         return ERROR_PARAM_NULL;
     }
 
@@ -303,7 +305,7 @@ int WaylandDisplay::toShmBufferFormat(RenderVideoFormat format, uint32_t *outfor
 
     int shmformat = (int)video_format_to_wl_shm_format(format);
     if (shmformat < 0) {
-        ERROR("Error not found render video format:%d to wl shmbuf format",format);
+        ERROR(mLogCategory,"Error not found render video format:%d to wl shmbuf format",format);
         return ERROR_NOT_FOUND;
     }
 
@@ -320,7 +322,7 @@ int WaylandDisplay::toShmBufferFormat(RenderVideoFormat format, uint32_t *outfor
 
 void WaylandDisplay::setVideoBufferFormat(RenderVideoFormat format)
 {
-    TRACE1("set video buffer format: %d",format);
+    TRACE1(mLogCategory,"set video buffer format: %d",format);
     mBufferFormat = format;
 };
 
@@ -347,7 +349,7 @@ bool WaylandDisplay::threadLoop()
      so do use -1 to wait for ever*/
     ret = mPoll->wait(-1); //wait for ever
     if (ret < 0) { //poll error
-        WARNING("poll error");
+        WARNING(mLogCategory,"poll error");
         wl_display_cancel_read(mWlDisplay);
         return false;
     } else if (ret == 0) { //poll time out
@@ -361,6 +363,6 @@ bool WaylandDisplay::threadLoop()
     wl_display_dispatch_queue_pending (mWlDisplay, mWlQueue);
     return true;
 tag_error:
-    ERROR("Error communicating with the wayland server");
+    ERROR(mLogCategory,"Error communicating with the wayland server");
     return false;
 }

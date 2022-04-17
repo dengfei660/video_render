@@ -37,20 +37,20 @@ static int IOCTL( int fd, int request, void* arg );
 MonitorThread::MonitorThread(SinkManager *sinkMgr)
     :mSinkMgr(sinkMgr)
 {
-    DEBUG("in");
+    DEBUG(NO_CATEGERY,"in");
     mUeventFd = -1;
     mLockFd = -1;
     mSocketServerFd = -1;
     mPoll = new Poll(true);
-    DEBUG("out");
+    DEBUG(NO_CATEGERY,"out");
 }
 
 MonitorThread::~MonitorThread()
 {
-    DEBUG("in");
+    DEBUG(NO_CATEGERY,"in");
     if (mPoll) {
         if (isRunning()) {
-            DEBUG("try stop thread");
+            DEBUG(NO_CATEGERY,"try stop thread");
             mPoll->setFlushing(true);
             requestExitAndWait();
         }
@@ -65,18 +65,18 @@ MonitorThread::~MonitorThread()
         close(mSocketServerFd);
         mSocketServerFd = -1;
     }
-    DEBUG("out");
+    DEBUG(NO_CATEGERY,"out");
 }
 
 bool MonitorThread::openUeventMonitor()
 {
-    DEBUG("in");
+    DEBUG(NO_CATEGERY,"in");
     bool result = false;
 
     mUeventFd = socket(PF_NETLINK, SOCK_DGRAM, NETLINK_KOBJECT_UEVENT);
-    INFO("uevent process thread: ueventFd %d", mUeventFd);
+    INFO(NO_CATEGERY,"uevent process thread: ueventFd %d", mUeventFd);
     if (mUeventFd < 0) {
-        ERROR("open uevent fd fail");
+        ERROR(NO_CATEGERY,"open uevent fd fail");
         goto exit;
     }
 
@@ -88,15 +88,15 @@ bool MonitorThread::openUeventMonitor()
     nlAddr.nl_groups= 0xFFFFFFFF;
     rc= bind( mUeventFd, (struct sockaddr *)&nlAddr, sizeof(nlAddr));
     if (rc) { //bind fail
-        ERROR("bind failed for ueventFd: rc %d", rc);
+        ERROR(NO_CATEGERY,"bind failed for ueventFd: rc %d", rc);
         goto exit;
     }
 
     result = true;
-    DEBUG("out");
+    DEBUG(NO_CATEGERY,"out");
 exit:
     if (!result) {
-        ERROR("");
+        ERROR(NO_CATEGERY,"");
         if (mUeventFd >= 0) {
             close(mUeventFd);
             mUeventFd = -1;
@@ -111,18 +111,18 @@ bool MonitorThread::openSocketMonitor()
     const char *workingDir;
     int rc, pathNameLen, addressSize;
 
-    DEBUG("in");
+    DEBUG(NO_CATEGERY,"in");
     workingDir = getenv("XDG_RUNTIME_DIR");
     if ( !workingDir )
     {
-        ERROR("XDG_RUNTIME_DIR is not set");
+        ERROR(NO_CATEGERY,"XDG_RUNTIME_DIR is not set");
         goto exit;
     }
 
     pathNameLen = strlen(workingDir)+strlen("/")+strlen(SOCKET_NAME)+1;
     if ( pathNameLen > (int)sizeof(mAddr.sun_path) )
     {
-        ERROR("name for server unix domain socket is too long: %d versus max %d",
+        ERROR(NO_CATEGERY,"name for server unix domain socket is too long: %d versus max %d",
              pathNameLen, (int)sizeof(mAddr.sun_path) );
         goto exit;
     }
@@ -139,14 +139,14 @@ bool MonitorThread::openSocketMonitor()
                         S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP );
     if ( mLockFd < 0 )
     {
-        ERROR("failed to create lock file (%s) errno %d", mLockName, errno );
+        ERROR(NO_CATEGERY,"failed to create lock file (%s) errno %d", mLockName, errno );
         goto exit;
     }
 
     rc = flock(mLockFd, LOCK_NB|LOCK_EX );
     if ( rc < 0 )
     {
-        ERROR("failed to lock.  Is another server running with name %s ?", SOCKET_NAME );
+        ERROR(NO_CATEGERY,"failed to lock.  Is another server running with name %s ?", SOCKET_NAME );
         goto exit;
     }
 
@@ -155,25 +155,25 @@ bool MonitorThread::openSocketMonitor()
     mSocketServerFd = socket( PF_LOCAL, SOCK_STREAM|SOCK_CLOEXEC, 0 );
     if ( mSocketServerFd < 0 )
     {
-        ERROR("wstInitServiceServer: unable to open socket: errno %d", errno );
+        ERROR(NO_CATEGERY,"wstInitServiceServer: unable to open socket: errno %d", errno );
         goto exit;
     }
 
-    INFO("socketServerFd %d", mSocketServerFd);
+    INFO(NO_CATEGERY,"socketServerFd %d", mSocketServerFd);
 
     addressSize = pathNameLen + offsetof(struct sockaddr_un, sun_path);
 
     rc= bind(mSocketServerFd, (struct sockaddr *)&mAddr, addressSize );
     if ( rc < 0 )
     {
-        ERROR("wstInitServiceServer: Error: bind failed for socket: errno %d", errno );
+        ERROR(NO_CATEGERY,"wstInitServiceServer: Error: bind failed for socket: errno %d", errno );
         goto exit;
     }
 
     rc= listen(mSocketServerFd, 1);
     if ( rc < 0 )
     {
-        ERROR("wstInitServiceServer: Error: listen failed for socket: errno %d", errno );
+        ERROR(NO_CATEGERY,"wstInitServiceServer: Error: listen failed for socket: errno %d", errno );
         goto exit;
     }
 
@@ -185,7 +185,7 @@ exit:
         mAddr.sun_path[0]= '\0';
         mLockName[0]= '\0';
     }
-    DEBUG("out");
+    DEBUG(NO_CATEGERY,"out");
    return result;
 }
 
@@ -206,7 +206,7 @@ bool MonitorThread::ueventEventProcess()
         uint32_t param2 = 0;
         bool connecting = false;
         bool disconnecting = false;
-        //INFO("msg:%s",msg);
+        //INFO(NO_CATEGERY,"msg:%s",msg);
         while (*msg || *(msg + 1))
         {
             if (!strncmp(msg, "V4L2_CMD_TYPE=", strlen("V4L2_CMD_TYPE=")))
@@ -233,16 +233,16 @@ bool MonitorThread::ueventEventProcess()
             while (*msg++)
                 ;
         }
-        //INFO("cmd:%u,param0:%u,param1:%u,param2:%u",cmd,param0,param1,param2);
-        //INFO("expect V4L2_CID_EXT_VDO_VDEC_CONNECTING=%u,V4L2_CID_EXT_VDO_VDEC_DISCONNECTING=%u",V4L2_CID_EXT_VDO_VDEC_CONNECTING,V4L2_CID_EXT_VDO_VDEC_DISCONNECTING);
+        //INFO(NO_CATEGERY,"cmd:%u,param0:%u,param1:%u,param2:%u",cmd,param0,param1,param2);
+        //INFO(NO_CATEGERY,"expect V4L2_CID_EXT_VDO_VDEC_CONNECTING=%u,V4L2_CID_EXT_VDO_VDEC_DISCONNECTING=%u",V4L2_CID_EXT_VDO_VDEC_CONNECTING,V4L2_CID_EXT_VDO_VDEC_DISCONNECTING);
         //create vdo data server thread
         if ( param0 == AM_V4L2_CID_EXT_VDO_VDEC_CONNECTING )
         {
             Tls::Mutex::Autolock _l(mMutex);
-            INFO("VDO connecting event detected" );
+            INFO(NO_CATEGERY,"VDO connecting event detected" );
             mSinkMgr->createVdoSink(0/*param1*/, 0/*param2*/);
         } else if (param0 == AM_V4L2_CID_EXT_VDO_VDEC_DISCONNECTING) { //destroy vdo data server thread
-            INFO("VDO disconnecting event detected" );
+            INFO(NO_CATEGERY,"VDO disconnecting event detected" );
             mSinkMgr->destroySink(param1, param2);
         }
     }
@@ -257,22 +257,22 @@ bool MonitorThread::socketEventProcess()
     socklen_t addrLen= sizeof(addr);
 
     if (mSocketServerFd < 0) {
-        WARNING("Not open socket server fd");
+        WARNING(NO_CATEGERY,"Not open socket server fd");
         return false;
     }
 
-    DEBUG("waiting for connections...");
+    DEBUG(NO_CATEGERY,"waiting for connections...");
     fd = accept4(mSocketServerFd, (struct sockaddr *)&addr, &addrLen, SOCK_CLOEXEC );
     if ( fd >= 0 ) {
         int vdecPort = parseVdecPort(fd);
         if (vdecPort < 0) {
-               ERROR("Please send vdePort first,when client connect server");
+               ERROR(NO_CATEGERY,"Please send vdePort first,when client connect server");
             close(fd);
             return true;
         }
         bool ret = mSinkMgr->createSocketSink(fd, vdecPort);
         if (!ret) {
-            ERROR("create socket sink fail");
+            ERROR(NO_CATEGERY,"create socket sink fail");
             close(fd);
         }
     }
@@ -310,7 +310,7 @@ int MonitorThread::parseVdecPort(int clientfd)
         if ( (m[0] == 'V') && (m[1] == 'S') && (m[2] == 2) && (m[3] == 'C') )
         {
             int vdecPort = m[4];
-            INFO("vdecPort:%d", vdecPort);
+            INFO(NO_CATEGERY,"vdecPort:%d", vdecPort);
             return vdecPort;
         }
         else
@@ -327,18 +327,18 @@ bool MonitorThread::init()
 
     ret = openUeventMonitor();
     if (!ret) {
-        ERROR("open uevent monitor fail");
+        ERROR(NO_CATEGERY,"open uevent monitor fail");
     }
     ret = openSocketMonitor();
     if (!ret) {
-        ERROR("open socket monitor fail");
+        ERROR(NO_CATEGERY,"open socket monitor fail");
     }
     return ret;
 }
 
 void MonitorThread::readyToRun()
 {
-    DEBUG("in");
+    DEBUG(NO_CATEGERY,"in");
     if (mUeventFd >= 0) {
         mPoll->addFd(mUeventFd);
         mPoll->setFdReadable(mUeventFd, true);
@@ -347,7 +347,7 @@ void MonitorThread::readyToRun()
         mPoll->addFd(mSocketServerFd);
         mPoll->setFdReadable(mSocketServerFd, true);
     }
-    DEBUG("out");
+    DEBUG(NO_CATEGERY,"out");
 }
 
 bool MonitorThread::threadLoop()
@@ -356,7 +356,7 @@ bool MonitorThread::threadLoop()
 
     ret = mPoll->wait(-1); //wait for ever
     if (ret < 0) { //poll error
-        WARNING("poll error");
+        WARNING(NO_CATEGERY,"poll error");
         return false;
     } else if (ret == 0) { //poll time out
         return true; //run loop

@@ -26,7 +26,7 @@ class WstClientPlugin;
 
 class WstClientWayland : public Tls::Thread{
   public:
-    WstClientWayland(WstClientPlugin *plugin);
+    WstClientWayland(WstClientPlugin *plugin, int logCategory);
     virtual ~WstClientWayland();
     /**
      * @brief connet client to compositor server
@@ -60,14 +60,8 @@ class WstClientWayland : public Tls::Thread{
         return mWlQueue;
     };
 
-    void setWindowSize(int x, int y, int w, int h) {
-        mWindowX = x;
-        mWindowY = y;
-        mWindowWidth = w;
-        mWindowHeight = h;
-        mWindowSet = true;
-        mWindowSizeOverride = true;
-    };
+    void setWindowSize(int x, int y, int w, int h);
+
     void getWindowSize(int *x, int *y, int *w, int *h) {
         *x = mWindowX;
         *y = mWindowY;
@@ -161,6 +155,8 @@ class WstClientWayland : public Tls::Thread{
     struct wl_sb *mWlSb;
     struct wl_registry *mWlRegistry;
     struct wl_compositor *mWlCompositor;
+
+    int mLogCategory;
 
     int mTransX;
     int mTransY;

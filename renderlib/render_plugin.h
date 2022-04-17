@@ -4,22 +4,15 @@
 
 typedef struct _PluginCallback PluginCallback;
 typedef void (*PluginMsgCallback)(void *handle, int msg, void *detail);
-typedef void (*PluginErrorCallback)(void *handle, int errCode, const char *errDetail);
 typedef void (*PluginBufferReleaseCallback)(void *handle,void *data);
 typedef void (*PluginBufferDisplayedCallback)(void *handle,void *data);
+typedef void (*PluginBufferDropedCallback)(void *handle,void *data);
 
 struct _PluginCallback {
     PluginMsgCallback doSendMsgCallback;
-    PluginErrorCallback doSendErrorCallback;
     PluginBufferReleaseCallback doBufferReleaseCallback;
     PluginBufferDisplayedCallback doBufferDisplayedCallback;
-};
-
-enum _PluginErrorCode {
-    PLUGIN_ERROR_DISPLAY_OPEN_FAIL,
-    PLUGIN_ERROR_WINDOW_OPEN_FAIL,
-    PLUGIN_ERROR_DISPLAY_CLOSE_FAIL,
-    PLUGIN_ERROR_WINDOW_CLOSE_FAIL,
+    PluginBufferDropedCallback doBufferDropedCallback;
 };
 
 /**
@@ -29,7 +22,16 @@ enum _PluginErrorCode {
  *
  */
 enum _PluginMsg {
-    PLUGIN_MSG_FRAME_DROPED    = 200, //droped frame number,the value is int type
+    PLUGIN_MSG_NOTIFY = 0, //msg of notity
+    PLUGIN_MSG_DISPLAY_OPEN_SUCCESS = 200, //msg of display open success
+    PLUGIN_MSG_WINDOW_OPEN_SUCCESS, //msg of window open success
+    PLUGIN_MSG_DISPLAY_CLOSE_SUCCESS, //msg of window close success
+    PLUGIN_MSG_WINDOW_CLOSE_SUCCESS, //msg of window close success
+    PLUGIN_MSG_DISPLAY_OPEN_FAIL, //msg of display open fail
+    PLUGIN_MSG_WINDOW_OPEN_FAIL, //msg of window open fail
+    PLUGIN_MSG_DISPLAY_CLOSE_FAIL, //msg of display close fail
+    PLUGIN_MSG_WINDOW_CLOSE_FAIL, //msg of window close fail
+    PLUGIN_MSG_UNKNOW_ERROR = 300, //msg of unknow error
 };
 
 /**

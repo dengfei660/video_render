@@ -79,7 +79,7 @@ class WstClientPlugin;
 
 class WstClientSocket : public Tls::Thread{
   public:
-    WstClientSocket(WstClientPlugin *plugin);
+    WstClientSocket(WstClientPlugin *plugin, int logCategory);
     virtual ~WstClientSocket();
     bool connectToSocket(const char *name);
     bool disconnectFromSocket();
@@ -89,7 +89,8 @@ class WstClientSocket : public Tls::Thread{
      * @param resourceId if 0 value,westeros server will select main video plane
      *          if other value,westeros server will select an other video plane
      */
-    void wstSendLayerVideoClientConnection(bool pip);
+    void sendLayerVideoClientConnection(bool pip);
+    void sendResourceVideoClientConnection(bool pip);
     void sendFlushVideoClientConnection();
     void sendPauseVideoClientConnection(bool pause);
     void sendHideVideoClientConnection(bool hide);
@@ -103,6 +104,7 @@ class WstClientSocket : public Tls::Thread{
     void readyToRun();
     virtual bool threadLoop();
   private:
+    int mLogCategory;
     const char *mName;
     struct sockaddr_un mAddr;
     int mSocketFd;

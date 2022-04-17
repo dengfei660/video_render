@@ -43,7 +43,7 @@ void SocketSink::handleBufferRelease(void* userData, RenderBuffer *buffer)
 
     for (int i = 0; i < buffer->dma.planeCnt; i++) {
         if (buffer->dma.fd[i] >= 0) {
-            DEBUG("close dma fd:%d",buffer->dma.fd[i]);
+            DEBUG(NO_CATEGERY,"close dma fd:%d",buffer->dma.fd[i]);
             close(buffer->dma.fd[i]);
         }
     }
@@ -66,7 +66,7 @@ SocketSink::SocketSink(SinkManager *sinkMgr, int socketfd, uint32_t vdecPort)
     mSocketFd(socketfd),
     mVdecPort(vdecPort)
 {
-    TRACE2("in");
+    TRACE2(NO_CATEGERY,"in");
     mState = STATE_CREATE;
     mRenderlib = NULL;
     mFrameWidth = 0;
@@ -75,12 +75,12 @@ SocketSink::SocketSink(SinkManager *sinkMgr, int socketfd, uint32_t vdecPort)
     mIsPixFormatSet = false;
     mIsPeerSocketConnect = true;
     mVdoPort = INVALIDE_PORT;
-    TRACE2("out");
+    TRACE2(NO_CATEGERY,"out");
 }
 
 SocketSink::~SocketSink()
 {
-    TRACE2("in");
+    TRACE2(NO_CATEGERY,"in");
     mState = STATE_DESTROY;
     if (mSocketFd >= 0) {
         shutdown(mSocketFd, SHUT_RDWR );
@@ -97,22 +97,22 @@ SocketSink::~SocketSink()
     if (isRunning()) {
         requestExitAndWait();
     }
-    TRACE2("out");
+    TRACE2(NO_CATEGERY,"out");
 }
 
 bool SocketSink::start()
 {
-    DEBUG("in");
+    DEBUG(NO_CATEGERY,"in");
     States oldState = mState;
     if (mState >= STATE_START) {
-        WARNING("had started");
+        WARNING(NO_CATEGERY,"had started");
         return true;
     }
     mState = STATE_START;
     mRenderlib = new RenderLibWrap(mVdecPort, mVdoPort);
     bool ret = mRenderlib->connectRender((char *)COMPOSITOR_NAME, INVALID_VIDEOTUNNEL_ID);
     if (!ret) {
-        ERROR("render lib connect render fail");
+        ERROR(NO_CATEGERY,"render lib connect render fail");
         mState = oldState;
         return false;
     }
@@ -123,15 +123,15 @@ bool SocketSink::start()
 
     //to start thread
     run("socketSink");
-    DEBUG("out");
+    DEBUG(NO_CATEGERY,"out");
     return true;
 }
 
 bool SocketSink::stop()
 {
-    DEBUG("in");
+    DEBUG(NO_CATEGERY,"in");
     if (mState >= STATE_STOP) {
-        WARNING("had stopped");
+        WARNING(NO_CATEGERY,"had stopped");
         return true;
     }
     mState = STATE_STOP;
@@ -150,7 +150,7 @@ bool SocketSink::stop()
     if (isRunning()) {
         requestExitAndWait();
     }
-    DEBUG("out");
+    DEBUG(NO_CATEGERY,"out");
     return true;
 }
 
@@ -192,7 +192,7 @@ void SocketSink::videoServerSendStatus(long long displayedFrameTime, int dropFra
 
     if ( sentLen == len )
     {
-        TRACE1("send status: frameTime %lld dropCount %d,bufferid:0x%x to client", displayedFrameTime, dropFrameCount,bufIndex);
+        TRACE1(NO_CATEGERY,"send status: frameTime %lld dropCount %d,bufferid:0x%x to client", displayedFrameTime, dropFrameCount,bufIndex);
     }
 }
 
@@ -232,7 +232,7 @@ void SocketSink::videoServerSendBufferRelease(int bufferId)
 
     if ( sentLen == len )
     {
-        TRACE1("send release buffer 0x%x to client", bufferId);
+        TRACE1(NO_CATEGERY,"send release buffer 0x%x to client", bufferId);
     }
 }
 
@@ -290,7 +290,7 @@ bool SocketSink::processEvent()
 
     len= recvmsg( mSocketFd, &msg, 0 /*flag`*/);
     if (len <= 0) { //do receive next msg
-        WARNING("video server peer disconnected");
+        WARNING(NO_CATEGERY,"video server peer disconnected");
         return false;
     }
 
@@ -330,7 +330,7 @@ bool SocketSink::processEvent()
 
             if ( mlen > sizeof(mbody) )
             {
-                ERROR("bad message length: %d : truncating");
+                ERROR(NO_CATEGERY,"bad message length: %d : truncating");
                 mlen= sizeof(mbody);
             }
             if ( mlen > 1 )
@@ -384,9 +384,9 @@ bool SocketSink::processEvent()
                         bufferId= (int)getU32( m+53 );
                         frameTime= (long long)getS64( m+57 );
                         mFrameCnt += 1;
-                        TRACE2("got frame %d buffer 0x%x frameTime %lld", mFrameCnt, bufferId, frameTime);
+                        TRACE2(NO_CATEGERY,"got frame %d buffer 0x%x frameTime %lld", mFrameCnt, bufferId, frameTime);
 
-                        TRACE2("got frame fd %d,%d,%d (%dx%d) %X (%d, %d, %d, %d) off(%d, %d, %d) stride(%d, %d, %d)",
+                        TRACE2(NO_CATEGERY,"got frame fd %d,%d,%d (%dx%d) %X (%d, %d, %d, %d) off(%d, %d, %d) stride(%d, %d, %d)",
                                 fd0, fd1, fd2, frameWidth, frameHeight, frameFormat, rectX, rectY, rectW, rectH,
                                 offset0, offset1, offset2, stride0, stride1, stride2 );
 
@@ -420,14 +420,14 @@ bool SocketSink::processEvent()
                     break;
                     case 'S':
                     {
-                        DEBUG("got flush");
+                        DEBUG(NO_CATEGERY,"got flush");
                         mRenderlib->flush();
                     }
                     break;
                     case 'P':
                     {
                         bool pause= (m[1] == 1);
-                        DEBUG("got pause (%d)", pause);
+                        DEBUG(NO_CATEGERY,"got pause (%d)", pause);
                         if (pause) {
                             mRenderlib->pause();
                         } else {
@@ -439,7 +439,7 @@ bool SocketSink::processEvent()
                     {
                         int syncType= m[1];
                         int sessionId= getU32( m+2 );
-                        DEBUG("got session info: sync type %d sessionId %d", syncType, sessionId);
+                        DEBUG(NO_CATEGERY,"got session info: sync type %d sessionId %d", syncType, sessionId);
                         mRenderlib->setMediasyncId(sessionId);
                         mRenderlib->setMediasyncSyncMode(syncType);
                     }
@@ -450,7 +450,7 @@ bool SocketSink::processEvent()
                         rectY= (int)getU32( m+5 );
                         rectW= (int)getU32( m+9 );
                         rectH= (int)getU32( m+13 );
-                        DEBUG("got position : (%d, %d, %d, %d)",rectX, rectY, rectW, rectH);
+                        DEBUG(NO_CATEGERY,"got position : (%d, %d, %d, %d)",rectX, rectY, rectW, rectH);
                         mRenderlib->setWindowSize(rectX, rectY, rectW, rectH);
                     }
                     break;
@@ -459,12 +459,12 @@ bool SocketSink::processEvent()
                         int num, denom;
                         num= (int)getU32( m+1 );
                         denom= (int)getU32( m+5 );
-                        DEBUG("got frame rate  (%d / %d)", num, denom);
+                        DEBUG(NO_CATEGERY,"got frame rate  (%d / %d)", num, denom);
                         mRenderlib->setVideoFps(num, denom);
                     }
                     break;
                     default:
-                    ERROR("got unknown video server message: mlen %d", mlen);
+                    ERROR(NO_CATEGERY,"got unknown video server message: mlen %d", mlen);
                     //wstDumpMessage( mbody, mlen+3 );
                     break;
                 }
@@ -476,21 +476,21 @@ bool SocketSink::processEvent()
 
 void SocketSink::readyToRun()
 {
-    DEBUG("in");
+    DEBUG(NO_CATEGERY,"in");
     mState = STATE_RUNNING;
 
-    DEBUG("out");
+    DEBUG(NO_CATEGERY,"out");
 }
 
 void SocketSink::readyToExit()
 {
-    DEBUG("in");
+    DEBUG(NO_CATEGERY,"in");
     /*if peer socket had disconnect
     destroy this socket sink*/
     if (!mIsPeerSocketConnect) {
         mSinkMgr->destroySink(mVdecPort, mVdoPort);
     }
-    DEBUG("out");
+    DEBUG(NO_CATEGERY,"out");
 }
 
 bool SocketSink::threadLoop()
@@ -498,7 +498,7 @@ bool SocketSink::threadLoop()
     bool ret;
 
     if (mSocketFd < 0) {
-        WARNING("Not open socket server fd");
+        WARNING(NO_CATEGERY,"Not open socket server fd");
         return false;
     }
 

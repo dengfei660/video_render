@@ -12,7 +12,9 @@
 
 #define TIME_NANO_SEC (1000000000)
 
-RenderCore::RenderCore():
+RenderCore::RenderCore(int renderlibId, int logCategory)
+    : mRenderlibId(renderlibId),
+    mLogCategory(logCategory),
     mPaused(false),
     mFlushing(false),
     mMediaSynInstID(-1),
@@ -54,7 +56,7 @@ RenderCore::RenderCore():
         int limit = atoi(env);
         if (limit == 0) {
             mIsLimitDisplayFrame = false;
-            INFO("No limit send frame");
+            INFO(mLogCategory,"No limit send frame");
         }
     }
     mMediaSyncTunnelmode = false;
@@ -63,51 +65,56 @@ RenderCore::RenderCore():
 }
 RenderCore::~RenderCore()
 {
-    TRACE2("desconstruct");
+    TRACE2(mLogCategory,"desconstruct");
 }
 
 static PluginCallback plugincallback = {
     RenderCore::pluginMsgCallback,
-    RenderCore::pluginErrorCallback,
     RenderCore::pluginBufferReleaseCallback,
-    RenderCore::pluginBufferDisplayedCallback
+    RenderCore::pluginBufferDisplayedCallback,
+    RenderCore::pluginBufferDropedCallback
 };
 
 int RenderCore::init(char *name)
 {
-    DEBUG("name:%s",name);
+    DEBUG(mLogCategory,"name:%s",name);
     char *compositor = name;
     mCompositorName = name;
     char *val = getenv("VIDEO_RENDER_COMPOSITOR");
     if (val) {
-        INFO("VIDEO_RENDER_COMPOSITOR=%s",val);
+        INFO(mLogCategory,"VIDEO_RENDER_COMPOSITOR=%s",val);
         if (!strcmp(val, "weston") || !strcmp(val, "westeros")) {
             compositor = val;
         }
     }
 
     if (!strcmp(compositor, "wayland") || !strcmp(compositor, "weston")) {
-        mPlugin = new WaylandPlugin();
+        mPlugin = new WaylandPlugin(mLogCategory);
     } else if (!strcmp(compositor, "westeros")) {
-        mPlugin = new WstClientPlugin();
+        mPlugin = new WstClientPlugin(mLogCategory);
     }
 #ifdef SUPPORT_VIDEOTUNNEL
     else if (!strcmp(compositor, "videotunnel")) {
-        mPlugin = new VideoTunnelPlugin();
+        mPlugin = new VideoTunnelPlugin(mLogCategory);
     }
 #endif
-    INFO("compositor:%s",compositor);
+    INFO(mLogCategory,"compositor:%s",compositor);
     mPlugin->init();
     mPlugin->setUserData(this, &plugincallback);
+
+    if (!mMediaSync) {
+        mMediaSync = MediaSync_create();
+        INFO(mLogCategory,"New MediaSync");
+    }
+
     return NO_ERROR;
 }
 
-
 int RenderCore::release()
 {
-    DEBUG("release");
+    DEBUG(mLogCategory,"release");
     if (isRunning()) {
-        DEBUG("try stop render frame thread");
+        DEBUG(mLogCategory,"try stop render frame thread");
         requestExitAndWait();
     }
 
@@ -128,7 +135,13 @@ int RenderCore::release()
         mCallback = NULL;
     }
 
-    DEBUG("release end");
+    if (mMediaSync) {
+        MediaSync_destroy(mMediaSync);
+        mMediaSync = NULL;
+        mMediaSyncInited = false;
+    }
+
+    DEBUG(mLogCategory,"release end");
 
     return NO_ERROR;
 }
@@ -136,74 +149,75 @@ int RenderCore::release()
 void RenderCore::setCallback(RenderCallback *callback)
 {
     if (!callback) {
-        ERROR("Error param is null");
+        ERROR(mLogCategory,"Error param is null");
         return;
     }
     if (!mCallback) {
         mCallback = (RenderCallback *)calloc(1,sizeof(RenderCallback));
     }
     if (!mCallback) {
-        ERROR("Error no memery");
+        ERROR(mLogCategory,"Error no memery");
         return;
     }
-    TRACE1("callback:%p,doMsgSend:%p,doGetValue:%p",callback,callback->doMsgSend,callback->doGetValue);
+    TRACE1(mLogCategory,"callback:%p,doMsgSend:%p,doGetValue:%p",callback,callback->doMsgSend,callback->doGetValue);
     mCallback->doMsgSend = callback->doMsgSend;
     mCallback->doGetValue = callback->doGetValue;
 }
 
 void RenderCore::setUserData(void *data)
 {
-    TRACE1("data:%p",data);
+    TRACE1(mLogCategory,"data:%p",data);
     mUserData = data;
 }
 
 int RenderCore::connect()
 {
     int ret;
-    DEBUG("Connect");
+    DEBUG(mLogCategory,"Connect");
+
     if (!mMediaSync) {
         mMediaSync = MediaSync_create();
-        INFO("New MediaSync");
+        INFO(mLogCategory,"New MediaSync");
     }
 
     int pluginState = mPlugin->getState();
     if ((pluginState & PLUGIN_STATE_DISPLAY_OPENED) && (pluginState & PLUGIN_STATE_WINDOW_OPENED)) {
-        WARNING("Render had connected");
+        WARNING(mLogCategory,"Render had connected");
         return NO_ERROR;
     }
 
     ret = mPlugin->openDisplay();
     if (ret != NO_ERROR) {
-        ERROR("Error open display");
+        ERROR(mLogCategory,"Error open display");
         return -1;
     }
     ret = mPlugin->openWindow();
     if (ret != NO_ERROR) {
-        ERROR("Error open window");
+        ERROR(mLogCategory,"Error open window");
         return -1;
     }
 
-    DEBUG("Connect,end");
+    DEBUG(mLogCategory,"Connect,end");
     return NO_ERROR;
 }
 
 int RenderCore::disconnect()
 {
-    DEBUG("Disconnect");
+    DEBUG(mLogCategory,"Disconnect");
     //sleep to wait last frame displayed
     usleep(30000); //is needed?
 
     if (isRunning()) {
-        DEBUG("stop render frame thread");
+        DEBUG(mLogCategory,"stop render frame thread");
         requestExitAndWait();
     }
 
     if (mPlugin->getState() & PLUGIN_STATE_WINDOW_OPENED) {
-        TRACE1("try close window");
+        TRACE1(mLogCategory,"try close window");
         mPlugin->closeWindow();
     }
     if (mPlugin->getState() & PLUGIN_STATE_DISPLAY_OPENED) {
-        TRACE1("try close display");
+        TRACE1(mLogCategory,"try close display");
         mPlugin->closeDisplay();
     }
 
@@ -213,9 +227,9 @@ int RenderCore::disconnect()
         mMediaSyncInited = false;
     }
     //flush cache buffers
-    TRACE1("flush cached buffers");
+    TRACE1(mLogCategory,"flush cached buffers");
     flush();
-    DEBUG("Disconnect,end");
+    DEBUG(mLogCategory,"Disconnect,end");
     return NO_ERROR;
 }
 
@@ -223,20 +237,20 @@ int RenderCore::displayFrame(RenderBuffer *buffer)
 {
     //if display thread is not running ,start it
     if (!isRunning()) {
-        DEBUG("to run displaythread");
+        DEBUG(mLogCategory,"to run displaythread");
         //run display thread
         run("displaythread");
     }
     //try lock
     {
         Tls::Mutex::Autolock _l(mRenderMutex);
-        TRACE1("+++++buffer:%p,ptsUs:%lld,ptsdiff:%d ms",buffer,buffer->pts,(buffer->pts/1000000-mLastInputPTS/1000000));
+        TRACE1(mLogCategory,"+++++buffer:%p,ptsUs:%lld,ptsdiff:%d ms",buffer,buffer->pts,(buffer->pts/1000000-mLastInputPTS/1000000));
 
         //if pts is -1,we need calculate it
         if (buffer->pts == -1) {
             if (mVideoFPS > 0) {
                 buffer->pts = mLastInputPTS + TIME_NANO_SEC/mVideoFPS;
-                TRACE2("correct pts:%lld",buffer->pts);
+                TRACE2(mLogCategory,"correct pts:%lld",buffer->pts);
             }
         }
 
@@ -248,17 +262,19 @@ int RenderCore::displayFrame(RenderBuffer *buffer)
                 RenderBuffer *buf = (RenderBuffer *)*item;
                 if (buf->pts = mLastInputPTS) {
                     mRenderBufferQueue.pop_back();
-                    WARNING("Input frame buf pts is equal last frame pts,release last frame:%p",buf);
+                    WARNING(mLogCategory,"Input frame buf pts is equal last frame pts,release last frame:%p",buf);
                     if (mCallback) {
-                        TRACE1("release buffer %p",buf);
+                        TRACE1(mLogCategory,"release buffer %p",buf);
+                        mCallback->doMsgSend(mUserData, MSG_DROPED_BUFFER, buf);
                         mCallback->doMsgSend(mUserData, MSG_RELEASE_BUFFER, buf);
                     }
                     return NO_ERROR;
                 }
             } else {
-                WARNING("Input frame buf pts is equal last frame pts,release input frame:%p",buffer);
+                WARNING(mLogCategory,"Input frame buf pts is equal last frame pts,release input frame:%p",buffer);
                 if (mCallback) {
-                    TRACE1("release buffer %p",buffer);
+                    TRACE1(mLogCategory,"release buffer %p",buffer);
+                    mCallback->doMsgSend(mUserData, MSG_DROPED_BUFFER, buffer);
                     mCallback->doMsgSend(mUserData, MSG_RELEASE_BUFFER, buffer);
                 }
                 return NO_ERROR;
@@ -268,7 +284,7 @@ int RenderCore::displayFrame(RenderBuffer *buffer)
         mInFrameCnt += 1;
 
         mRenderBufferQueue.push_back(buffer);
-        TRACE1("queue size:%d, inFrameCnt:%d",mRenderBufferQueue.size(),mInFrameCnt);
+        TRACE1(mLogCategory,"queue size:%d, inFrameCnt:%d",mRenderBufferQueue.size(),mInFrameCnt);
 
         //fps detect
         if (mFPSDetectCnt <= 100) {
@@ -277,18 +293,18 @@ int RenderCore::displayFrame(RenderBuffer *buffer)
                 mFPSDetectAcc += internal;
                 mFPSDetectCnt++;
                 mFPSIntervalMs = mFPSDetectAcc/mFPSDetectCnt;
-                TRACE1("fps internal:%d ms,cnt:%d,mFPS_internal:%d",internal,mFPSDetectCnt,mFPSIntervalMs);
+                TRACE1(mLogCategory,"fps internal:%d ms,cnt:%d,mFPS_internal:%d",internal,mFPSDetectCnt,mFPSIntervalMs);
             }
         }
 
         mLastInputPTS = buffer->pts;
     }
     //queue video pts to mediasync
-    if (mMediaSync && mMediaSyncInited) {
-        if (mMediaSyncTunnelmode == false) {
-            MediaSync_queueVideoFrame((void* )mMediaSync, buffer->pts/1000, 0 /*size*/, 0 /*duration*/, MEDIASYNC_UNIT_US);
-        }
-    }
+    // if (mMediaSync && mMediaSyncInited) {
+    //     if (mMediaSyncTunnelmode == false) {
+    //         MediaSync_queueVideoFrame((void* )mMediaSync, buffer->pts/1000, 0 /*size*/, 0 /*duration*/, MEDIASYNC_UNIT_US);
+    //     }
+    // }
     return NO_ERROR;
 }
 
@@ -296,7 +312,7 @@ int RenderCore::displayFrame(RenderBuffer *buffer)
 int RenderCore::setProp(int property, void *prop)
 {
     if (!prop) {
-        ERROR("Params is NULL");
+        ERROR(mLogCategory,"Params is NULL");
         return ERROR_PARAM_NULL;
     }
 
@@ -307,7 +323,7 @@ int RenderCore::setProp(int property, void *prop)
             mWinSize.y = win->y;
             mWinSize.w = win->w;
             mWinSize.h = win->h;
-            DEBUG("set window size:x:%d,y:%d,w:%d,h:%d",mWinSize.x,mWinSize.y,mWinSize.w,mWinSize.h);
+            DEBUG(mLogCategory,"set window size:x:%d,y:%d,w:%d,h:%d",mWinSize.x,mWinSize.y,mWinSize.w,mWinSize.h);
             //if window has opened ,set immediately
             if (mPlugin->getState() & PLUGIN_STATE_WINDOW_OPENED) {
                 PluginRect rect;
@@ -324,7 +340,7 @@ int RenderCore::setProp(int property, void *prop)
             RenderFrameSize *frame = (RenderFrameSize *) (prop);
             mFrameWidth = frame->frameWidth;
             mFrameHeight = frame->frameHeight;
-            DEBUG("set frame size:w:%d,h:%d",mFrameWidth,mFrameHeight);
+            DEBUG(mLogCategory,"set frame size:w:%d,h:%d",mFrameWidth,mFrameHeight);
             //if window has opened ,set immediately
             if (mPlugin->getState() & PLUGIN_STATE_WINDOW_OPENED) {
                 PluginFrameSize size;
@@ -337,23 +353,23 @@ int RenderCore::setProp(int property, void *prop)
         } break;
         case KEY_MEDIASYNC_INSTANCE_ID: {
             mMediaSynInstID = *(int *)(prop);
-            DEBUG("set mediasync inst id:%d",mMediaSynInstID);
+            DEBUG(mLogCategory,"set mediasync inst id:%d",mMediaSynInstID);
         } break;
         case KEY_MEDIASYNC_PCR_PID: {
             mPcrId = *(int *)prop;
-            DEBUG("set pcr pid:%d",mPcrId);
+            DEBUG(mLogCategory,"set pcr pid:%d",mPcrId);
         } break;
         case KEY_MEDIASYNC_DEMUX_ID: {
             mDemuxId = *(int *)prop;
-            DEBUG("set demux id:%d",mDemuxId);
+            DEBUG(mLogCategory,"set demux id:%d",mDemuxId);
         } break;
         case KEY_MEDIASYNC_SYNC_MODE: {
             mSyncmode = *(int *)prop;
-            DEBUG("set mediasync sync mode:%d",mSyncmode);
+            DEBUG(mLogCategory,"set mediasync sync mode:%d",mSyncmode);
         } break;
         case KEY_VIDEO_FORMAT: {
             mVideoFormat = (RenderVideoFormat)*(int *)prop;
-            DEBUG("set video format:%d",mVideoFormat);
+            DEBUG(mLogCategory,"set video format:%d",mVideoFormat);
             if (mPlugin) {
                 mPlugin->set(PLUGIN_KEY_VIDEO_FORMAT, (void *)&mVideoFormat);
             }
@@ -363,11 +379,11 @@ int RenderCore::setProp(int property, void *prop)
             mVideoFPS_N = int ((fps >> 32) & 0xFFFFFFFF);
             mVideoFPS_D = int (fps & 0xFFFFFFFF);
             mVideoFPS = (int) mVideoFPS_N/mVideoFPS_D;
-            DEBUG("set video fps_n:%d(%x),fps_d:%d(%x),fps:%d",mVideoFPS_N,mVideoFPS_N,mVideoFPS_D,mVideoFPS_D,mVideoFPS);
+            DEBUG(mLogCategory,"set video fps_n:%d(%x),fps_d:%d(%x),fps:%d",mVideoFPS_N,mVideoFPS_N,mVideoFPS_D,mVideoFPS_D,mVideoFPS);
         } break;
         case KEY_VIDEO_PIP: {
             int pip = *(int *)(prop);
-            DEBUG("set video pip :%d",pip);
+            DEBUG(mLogCategory,"set video pip :%d",pip);
             if (mPlugin) {
                 mPlugin->set(PLUGIN_KEY_VIDEO_PIP, (void *)&pip);
             }
@@ -379,14 +395,14 @@ int RenderCore::setProp(int property, void *prop)
             } else {
                 mMediaSyncTunnelmode = false;
             }
-            DEBUG("set mediasync tunnel mode :%d",mMediaSyncTunnelmode);
+            DEBUG(mLogCategory,"set mediasync tunnel mode :%d",mMediaSyncTunnelmode);
         } break;
         case KEY_MEDIASYNC_HAS_AUDIO: {
 
         } break;
         case KEY_VIDEOTUNNEL_ID: {
             int videotunnelId = *(int *)(prop);
-            DEBUG("set videotunnel id :%d",videotunnelId);
+            DEBUG(mLogCategory,"set videotunnel id :%d",videotunnelId);
             if (mPlugin) {
                 mPlugin->set(PLUGIN_KEY_VIDEOTUNNEL_ID, (void *)&videotunnelId);
             }
@@ -401,7 +417,7 @@ int RenderCore::setProp(int property, void *prop)
 int RenderCore::getProp(int property, void *prop)
 {
     if (!prop) {
-        ERROR("Params is NULL");
+        ERROR(mLogCategory,"Params is NULL");
         return ERROR_PARAM_NULL;
     }
 
@@ -412,13 +428,13 @@ int RenderCore::getProp(int property, void *prop)
             win->y = mWinSize.y;
             win->w = mWinSize.w;
             win->h = mWinSize.h;
-            TRACE1("get prop window size:x:%,y:%y,w:%d,h:%d",win->x,win->y,win->w,win->h);
+            TRACE1(mLogCategory,"get prop window size:x:%,y:%y,w:%d,h:%d",win->x,win->y,win->w,win->h);
         } break;
         case KEY_FRAME_SIZE: {
             RenderFrameSize *frame = (RenderFrameSize *) prop;
             frame->frameWidth = mFrameWidth;
             frame->frameHeight = mFrameHeight;
-            TRACE1("get prop frame size:w:%d,h:%d",mFrameWidth,mFrameHeight);
+            TRACE1(mLogCategory,"get prop frame size:w:%d,h:%d",mFrameWidth,mFrameHeight);
         } break;
         case KEY_MEDIASYNC_INSTANCE_ID: {
             if (mMediaSync && mMediaSynInstID < 0) {
@@ -427,19 +443,19 @@ int RenderCore::getProp(int property, void *prop)
                                     &mMediaSynInstID);
             }
             *(int *)prop = mMediaSynInstID;
-            TRACE1("get prop mediasync inst id:%d",*(int *)prop);
+            TRACE1(mLogCategory,"get prop mediasync inst id:%d",*(int *)prop);
         } break;
         case KEY_MEDIASYNC_PCR_PID: {
             *(int *)prop = mPcrId;
-            TRACE1("get prop pcr pid:%d",*(int *)prop);
+            TRACE1(mLogCategory,"get prop pcr pid:%d",*(int *)prop);
         } break;
         case KEY_MEDIASYNC_DEMUX_ID: {
             *(int *)prop = mDemuxId;
-            TRACE1("get prop demux id:%d",*(int *)prop);
+            TRACE1(mLogCategory,"get prop demux id:%d",*(int *)prop);
         } break;
         case KEY_MEDIASYNC_SYNC_MODE: {
             *(int *)prop = mSyncmode;
-            TRACE1("get mediasync sync mode:%d",*(int *)prop);
+            TRACE1(mLogCategory,"get mediasync sync mode:%d",*(int *)prop);
         } break;
         case KEY_FRAME_DROPPED: {
             *(int *)prop = mDropFrameCnt;
@@ -456,7 +472,7 @@ int RenderCore::getProp(int property, void *prop)
 
 int RenderCore::flush()
 {
-    DEBUG("flush start");
+    DEBUG(mLogCategory,"flush start");
     Tls::Mutex::Autolock _l(mRenderMutex);
     mFlushing = true;
     for (auto item = mRenderBufferQueue.begin(); item != mRenderBufferQueue.end();) {
@@ -469,18 +485,18 @@ int RenderCore::flush()
     mPlugin->flush();
 
     mFlushing = false;
-    DEBUG("flush end");
+    DEBUG(mLogCategory,"flush end");
     return NO_ERROR;
 }
 
 int RenderCore::pause()
 {
-    DEBUG("Pause");
+    DEBUG(mLogCategory,"Pause");
     mPaused = true;
     if (mMediaSync && mMediaSyncInited) {
         mediasync_result ret = MediaSync_setPause(mMediaSync, true);
         if (ret != AM_MEDIASYNC_OK) {
-            ERROR("Error set mediasync pause ");
+            ERROR(mLogCategory,"Error set mediasync pause ");
         }
     }
     mPlugin->pause();
@@ -489,12 +505,12 @@ int RenderCore::pause()
 
 int RenderCore::resume()
 {
-    DEBUG("Resume");
+    DEBUG(mLogCategory,"Resume");
     mPaused = false;
     if (mMediaSync && mMediaSyncInited) {
         mediasync_result ret = MediaSync_setPause(mMediaSync, false);
         if (ret != AM_MEDIASYNC_OK) {
-            ERROR("Error set mediasync resume");
+            ERROR(mLogCategory,"Error set mediasync resume");
         }
     }
     mPlugin->resume();
@@ -506,9 +522,9 @@ int RenderCore::accquireDmaBuffer(RenderDmaBuffer *dmabuf)
     int planeCount;
     int width,height;
 
-    DEBUG("accquireDmaBuffer");
+    DEBUG(mLogCategory,"accquireDmaBuffer");
     if (!dmabuf) {
-        FATAL("Error param dmabuff is null");
+        FATAL(mLogCategory,"Error param dmabuff is null");
         return ERROR_UNEXPECTED_NULL;
     }
 
@@ -528,7 +544,7 @@ int RenderCore::accquireDmaBuffer(RenderDmaBuffer *dmabuf)
 
 void RenderCore::releaseDmaBuffer(RenderDmaBuffer *dmabuf)
 {
-    DEBUG("releaseDmaBuffer");
+    DEBUG(mLogCategory,"releaseDmaBuffer");
     if (dmabuf) {
         for (int i = 0; i < dmabuf->planeCnt; i++) {
             mPlugin->releaseDmaBuffer(dmabuf->fd[i]);
@@ -538,7 +554,6 @@ void RenderCore::releaseDmaBuffer(RenderDmaBuffer *dmabuf)
 
 int RenderCore::getFirstAudioPts(int64_t *pts)
 {
-#if 0
     mediasync_result ret;
     mediasync_frameinfo frameInfo;
     if (mMediaSync && mMediaSyncInited) {
@@ -550,13 +565,11 @@ int RenderCore::getFirstAudioPts(int64_t *pts)
             *pts = frameInfo.framePts;
         }
     }
-#endif
     return 0;
 }
 
 int RenderCore::getCurrentAudioPts(int64_t *pts)
 {
-#if 0
     mediasync_result ret;
     mediasync_frameinfo frameInfo;
     if (mMediaSync && mMediaSyncInited) {
@@ -568,7 +581,6 @@ int RenderCore::getCurrentAudioPts(int64_t *pts)
             *pts = frameInfo.framePts;
         }
     }
-#endif
     return 0;
 }
 
@@ -578,31 +590,31 @@ int RenderCore::getPlaybackRate(float *scale)
     return 0;
 }
 
-void RenderCore::pluginMsgCallback(void *handle, int msg, void *detail)
+int RenderCore::queueDemuxPts(int64_t ptsUs, uint32_t size)
 {
-    RenderCore* renderCore = static_cast<RenderCore *> (handle);
-    switch (msg)
-    {
-        case PLUGIN_MSG_FRAME_DROPED: {
-            renderCore->mDropFrameCnt += 1;
-            WARNING("frame dropped,pts:%lld,cnt:%d",((RenderBuffer *)detail)->pts,renderCore->mDropFrameCnt);
-        } break;
-        default:
-            break;
+    mediasync_result ret;
+    TRACE3(mLogCategory,"ptsUs:%lld,size:%u",ptsUs,size);
+    if (mMediaSync && mMediaSynInstID >= 0) {
+        if (mMediaSyncTunnelmode == false) {
+            ret = MediaSync_queueVideoFrame((void* )mMediaSync, ptsUs, size, 0 /*duration*/, MEDIASYNC_UNIT_US);
+            if (ret != AM_MEDIASYNC_OK) {
+                return -1;
+            }
+        }
+    } else {
+        WARNING(mLogCategory,"Mediasync is not create or alloc id,hand:%p,id:%d",mMediaSync,mMediaSynInstID);
+        return -1;
     }
-
-     if (renderCore->mCallback) {
-         //renderCore->mCallback->doMsgSend();
-     }
+    return 0;
 }
 
-void RenderCore::pluginErrorCallback(void *handle, int errCode, const char *errDetail)
+void RenderCore::pluginMsgCallback(void *handle, int msg, void *detail)
 {
     RenderCore* renderCore = static_cast<RenderCore *>(handle);
-    DEBUG("PluginErrorCallback,errCode:%d",errCode);
-    switch (errCode) {
-        case PLUGIN_ERROR_DISPLAY_OPEN_FAIL:
-        case PLUGIN_ERROR_WINDOW_OPEN_FAIL:
+    DEBUG(renderCore->mLogCategory,"pluginMsgCallback,msg:%d",msg);
+    switch (msg) {
+        case PLUGIN_MSG_DISPLAY_OPEN_FAIL:
+        case PLUGIN_MSG_WINDOW_OPEN_FAIL:
             if (renderCore->mCallback) {
                 renderCore->mCallback->doMsgSend(renderCore->mUserData, MSG_CONNECTED_FAIL, NULL);
             }
@@ -616,7 +628,7 @@ void RenderCore::pluginBufferReleaseCallback(void *handle,void *data)
 {
     RenderCore* renderCore = static_cast<RenderCore *>(handle);
     if (renderCore->mCallback) {
-        TRACE1("release buffer %p, pts:%lld",data,((RenderBuffer *)data)->pts);
+        TRACE1(renderCore->mLogCategory,"release buffer %p, pts:%lld",data,((RenderBuffer *)data)->pts);
         renderCore->mCallback->doMsgSend(renderCore->mUserData, MSG_RELEASE_BUFFER, data);
     }
 }
@@ -626,8 +638,18 @@ void RenderCore::pluginBufferDisplayedCallback(void *handle,void *data)
     RenderCore* renderCore = static_cast<RenderCore *>(handle);
     if (renderCore->mCallback) {
         renderCore->mDisplayedFrameCnt += 1;
-        TRACE1("displayed buffer %p, pts:%lld,cnt:%d",data,((RenderBuffer *)data)->pts,renderCore->mDisplayedFrameCnt);
+        TRACE1(renderCore->mLogCategory,"displayed buffer %p, pts:%lld,cnt:%d",data,((RenderBuffer *)data)->pts,renderCore->mDisplayedFrameCnt);
         renderCore->mCallback->doMsgSend(renderCore->mUserData, MSG_DISPLAYED_BUFFER, data);
+    }
+}
+
+void RenderCore::pluginBufferDropedCallback(void *handle,void *data)
+{
+    RenderCore* renderCore = static_cast<RenderCore *>(handle);
+    if (renderCore->mCallback) {
+        renderCore->mDisplayedFrameCnt += 1;
+        WARNING(renderCore->mLogCategory,"drop buffer %p, pts:%lld,cnt:%d",data,((RenderBuffer *)data)->pts,renderCore->mDropFrameCnt);
+        renderCore->mCallback->doMsgSend(renderCore->mUserData, MSG_DROPED_BUFFER, data);
     }
 }
 
@@ -645,7 +667,7 @@ void RenderCore::mediaSyncTunnelmodeDisplay()
     int64_t delaytimeUs; //us unit
 
     if (!mMediaSync || !mMediaSyncInited) {
-        WARNING("No create mediasync or no init mediasync");
+        WARNING(mLogCategory,"No create mediasync or no init mediasync");
         return;
     }
 
@@ -655,7 +677,7 @@ void RenderCore::mediaSyncTunnelmodeDisplay()
     //get video frame display time
     ret = MediaSync_getRealTimeFor(mMediaSync, buf->pts/1000/*us*/, &realtimeUs);
     if (ret != AM_MEDIASYNC_OK) {
-        WARNING("get mediasync realtime fail");
+        WARNING(mLogCategory,"get mediasync realtime fail");
     }
 
     //get systemtime
@@ -663,7 +685,7 @@ void RenderCore::mediaSyncTunnelmodeDisplay()
     //get mediasync systemtime
     ret = MediaSync_getRealTimeForNextVsync(mMediaSync, &nowMediasyncTimeUs);
     if (ret != AM_MEDIASYNC_OK) {
-        WARNING("get mediasync time fail");
+        WARNING(mLogCategory,"get mediasync time fail");
     }
 
     //update mediasync pts when vmaster
@@ -679,20 +701,20 @@ void RenderCore::mediaSyncTunnelmodeDisplay()
         if (realtimeUs < 0) {
             if (mSyncmode == MEDIA_SYNC_AMASTER) {
                 if (mWaitAudioAnchorTimeMs > 0) {
-                    WARNING("wait audio anchor mediasync left %d ms",mWaitAudioAnchorTimeMs);
+                    WARNING(mLogCategory,"wait audio anchor mediasync left %d ms",mWaitAudioAnchorTimeMs);
                     mWaitAudioAnchorTimeMs -= 2;
                     Tls::Mutex::Autolock _l(mRenderMutex);
                     mRenderCondition.waitRelative(mRenderMutex,2);
                     return;
                 } else {
-                    WARNING("wait audio anchor mediasync timeout, use vmaster");
+                    WARNING(mLogCategory,"wait audio anchor mediasync timeout, use vmaster");
                     MediaSync_setSyncMode(mMediaSync, MEDIA_SYNC_VMASTER);
                     mSyncmode = MEDIA_SYNC_VMASTER;
                     MediaSync_updateAnchor(mMediaSync, buf->pts/1000, 0, 0);
                 }
             }
 
-            WARNING("mediasync get realtimeUs %lld,use local systemtime",realtimeUs);
+            WARNING(mLogCategory,"mediasync get realtimeUs %lld,use local systemtime",realtimeUs);
             /*use pts diff to send frame displaying,when get realtime fail,
             the first frame send imediately,but other frames will send
             interval pts diff time
@@ -716,7 +738,7 @@ void RenderCore::mediaSyncTunnelmodeDisplay()
     } else {
         if (mIsLimitDisplayFrame) {
             //block thread to wait until delaytime is reached
-            TRACE2("limit display frame after %lld ms",delaytimeUs/1000);
+            TRACE2(mLogCategory,"limit display frame after %lld ms",delaytimeUs/1000);
             Tls::Mutex::Autolock _l(mRenderMutex);
             mRenderCondition.waitRelative(mRenderMutex,delaytimeUs/1000);
         }
@@ -726,10 +748,10 @@ void RenderCore::mediaSyncTunnelmodeDisplay()
     Tls::Mutex::Autolock _l(mRenderMutex);
     mRenderBufferQueue.pop_front();
 
-    TRACE1("PTSNs:%lld,lastPTSNs:%lld,realtmUs:%lld,mtmUs:%lld,stmUs:%lld",buf->pts,mLastDisplayPTS,realtimeUs,nowMediasyncTimeUs,nowSystemtimeUs);
+    TRACE1(mLogCategory,"PTSNs:%lld,lastPTSNs:%lld,realtmUs:%lld,mtmUs:%lld,stmUs:%lld",buf->pts,mLastDisplayPTS,realtimeUs,nowMediasyncTimeUs,nowSystemtimeUs);
 
     //display video frame
-    TRACE1("+++++display frame:%p, ptsNs:%lld(%lld ms),realtmUs:%lld,realtmDiffMs:%lld",buf,buf->pts,buf->pts/1000000,realtimeUs,(realtimeUs-mLastDisplayRealtime)/1000);
+    TRACE1(mLogCategory,"+++++display frame:%p, ptsNs:%lld(%lld ms),realtmUs:%lld,realtmDiffMs:%lld",buf,buf->pts,buf->pts/1000000,realtimeUs,(realtimeUs-mLastDisplayRealtime)/1000);
     mPlugin->displayFrame(buf, realtimeUs);
     mLastDisplayPTS = buf->pts;
     mLastRenderBuffer = buf;
@@ -746,7 +768,7 @@ void RenderCore::mediaSyncNoTunnelmodeDisplay()
     int64_t ptsdifUs = 0; //us unit
 
     if (!mMediaSync || !mMediaSyncInited) {
-        WARNING("No create mediasync or no init mediasync");
+        WARNING(mLogCategory,"No create mediasync or no init mediasync");
         return;
     }
 
@@ -760,25 +782,25 @@ void RenderCore::mediaSyncNoTunnelmodeDisplay()
     beforeTimeUs = Tls::Times::getSystemTimeUs();
     ret = MediaSync_VideoProcess((void*) mMediaSync, buf->pts/1000, mLastDisplayPTS/1000, MEDIASYNC_UNIT_US, &vsyncPolicy);
     if (ret != AM_MEDIASYNC_OK) {
-        ERROR("Error MediaSync_VideoProcess");
+        ERROR(mLogCategory,"Error MediaSync_VideoProcess");
         return;
     }
 
-    TRACE1("PTSNs:%lld,lastPTSNs:%lld,policy:%d,realtimeUs:%lld",buf->pts,mLastDisplayPTS,vsyncPolicy.videopolicy,vsyncPolicy.param1);
+    TRACE1(mLogCategory,"PTSNs:%lld,lastPTSNs:%lld,policy:%d,realtimeUs:%lld",buf->pts,mLastDisplayPTS,vsyncPolicy.videopolicy,vsyncPolicy.param1);
     if (vsyncPolicy.videopolicy == MEDIASYNC_VIDEO_NORMAL_OUTPUT) {
         mRenderBufferQueue.pop_front();
         realtimeUs = vsyncPolicy.param1;
         //get mediasync systemtime
         ret = MediaSync_getRealTimeForNextVsync(mMediaSync, &nowMediasyncTimeUs);
         if (ret != AM_MEDIASYNC_OK) {
-            WARNING("get mediasync time fail");
+            WARNING(mLogCategory,"get mediasync time fail");
         }
 
         nowSystemtimeUs = Tls::Times::getSystemTimeUs();
-        TRACE1("PTSNs:%lld,lastPTSNs:%lld,realtmUs:%lld,mtmUs:%lld,stmUs:%lld",buf->pts,mLastDisplayPTS,realtimeUs,nowMediasyncTimeUs,nowSystemtimeUs);
+        TRACE1(mLogCategory,"PTSNs:%lld,lastPTSNs:%lld,realtmUs:%lld,mtmUs:%lld,stmUs:%lld",buf->pts,mLastDisplayPTS,realtimeUs,nowMediasyncTimeUs,nowSystemtimeUs);
 
         //display video frame
-        TRACE1("+++++display frame:%p, ptsNs:%lld(%lld ms),realtmUs:%lld,realtmDiffMs:%lld",buf,buf->pts,buf->pts/1000000,realtimeUs,(realtimeUs-mLastDisplayRealtime)/1000);
+        TRACE1(mLogCategory,"+++++display frame:%p, ptsNs:%lld(%lld ms),realtmUs:%lld,realtmDiffMs:%lld",buf,buf->pts,buf->pts/1000000,realtimeUs,(realtimeUs-mLastDisplayRealtime)/1000);
         mPlugin->displayFrame(buf, realtimeUs);
 
         /*calculate pts interval between this frames to next frame
@@ -805,9 +827,9 @@ void RenderCore::mediaSyncNoTunnelmodeDisplay()
         //we need to calculate the wait time
         int64_t nowTimeUs = Tls::Times::getSystemTimeUs();
         int64_t needWaitTimeUs = ptsdifUs - (nowTimeUs - beforeTimeUs); //ms
-        TRACE2("limit display frame after %lld ms",needWaitTimeUs/1000);
+        TRACE2(mLogCategory,"limit display frame after %lld ms",needWaitTimeUs/1000);
         if (needWaitTimeUs < 0) {
-            WARNING("displayFrame taking too long time");
+            WARNING(mLogCategory,"displayFrame taking too long time");
             return ;
         }
         Tls::Mutex::Autolock _l(mRenderMutex);
@@ -822,21 +844,21 @@ void RenderCore::mediaSyncNoTunnelmodeDisplay()
         mLastRenderBuffer = buf;
         //mLastDisplayRealtime = vsyncPolicy.param1;
         mRenderBufferQueue.pop_front();
-        WARNING("drop frame pts:%lld",buf->pts);
-        RenderCore::pluginBufferDisplayedCallback(this, (void *)buf);
+        WARNING(mLogCategory,"drop frame pts:%lld",buf->pts);
+        RenderCore::pluginBufferDropedCallback(this, (void *)buf);
         RenderCore::pluginBufferReleaseCallback(this, (void *)buf);
     }
 }
 
 void RenderCore::readyToRun()
 {
-    DEBUG("Displaythread,readyToRun");
+    DEBUG(mLogCategory,"Displaythread,readyToRun");
     //get video buffer format from user
     if (mVideoFormat == VIDEO_FORMAT_UNKNOWN) {
         if (mCallback) {
             mCallback->doGetValue(mUserData, KEY_VIDEO_FORMAT, &mVideoFormat);
         }
-        DEBUG("get video format %d from user",mVideoFormat);
+        DEBUG(mLogCategory,"get video format %d from user",mVideoFormat);
         //set video format to plugin
         mPlugin->set(PLUGIN_KEY_VIDEO_FORMAT, &mVideoFormat);
     }
@@ -844,12 +866,12 @@ void RenderCore::readyToRun()
     if (mMediaSync && mMediaSynInstID < 0) {
         if (mCallback) {
             mCallback->doGetValue(mUserData, KEY_MEDIASYNC_INSTANCE_ID, (void *)&mMediaSynInstID);
-            DEBUG("get mediasync instance id:%d",mMediaSynInstID);
+            DEBUG(mLogCategory,"get mediasync instance id:%d",mMediaSynInstID);
             if (mMediaSynInstID >= 0 && mSyncmode == MEDIA_SYNC_MODE_MAX) {
-                WARNING("user not set mediasync mode, so set amaster!!!");
+                WARNING(mLogCategory,"user not set mediasync mode, so set amaster!!!");
                 mSyncmode = MEDIA_SYNC_AMASTER;
             } else if (mMediaSynInstID < 0) {
-                WARNING("get mediasync id fail !!!");
+                WARNING(mLogCategory,"get mediasync id fail !!!");
             }
         }
         if (mMediaSynInstID < 0) {
@@ -857,19 +879,19 @@ void RenderCore::readyToRun()
                                     mPcrId,
                                     &mMediaSynInstID);
             if (mSyncmode == MEDIA_SYNC_MODE_MAX) {
-                WARNING("user not set mediasync mode, so set vmaster!!!");
+                WARNING(mLogCategory,"user not set mediasync mode, so set vmaster!!!");
                 mSyncmode = MEDIA_SYNC_VMASTER;
             }
         }
     }
     //to bind mediasync id and set sync mode
     if (mMediaSync && mMediaSynInstID > 0) {
-        INFO("mediasync set tunnel mode: %d",mMediaSyncTunnelmode);
+        INFO(mLogCategory,"mediasync set tunnel mode: %d",mMediaSyncTunnelmode);
         mediasync_setParameter(mMediaSync, MEDIASYNC_KEY_ISOMXTUNNELMODE, (void* )&mMediaSyncTunnelmode);
-        INFO("mediasync bindInstance %d,sync mode:%d (0:vmaster,1:amaster,2:pcrmaster)",mMediaSynInstID,mSyncmode);
+        INFO(mLogCategory,"mediasync bindInstance %d,sync mode:%d (0:vmaster,1:amaster,2:pcrmaster)",mMediaSynInstID,mSyncmode);
         MediaSync_bindInstance(mMediaSync, mMediaSynInstID, MEDIA_VIDEO);
         if (mSyncmode == MEDIA_SYNC_MODE_MAX) {
-            WARNING("user not set mediasync mode, so use default amaster!!!");
+            WARNING(mLogCategory,"user not set mediasync mode, so use default amaster!!!");
             mSyncmode = MEDIA_SYNC_AMASTER;
         }
         MediaSync_setSyncMode(mMediaSync, (sync_mode)mSyncmode);
@@ -918,7 +940,7 @@ bool RenderCore::threadLoop()
         int64_t nowTimeUs = Tls::Times::getSystemTimeUs();
         int64_t displayTimeUs = nowTimeUs;
 
-        TRACE1("+++++display frame:%p, pts(ns):%lld, displaytime:%lld",buf,buf->pts,displayTimeUs);
+        TRACE1(mLogCategory,"+++++display frame:%p, pts(ns):%lld, displaytime:%lld",buf,buf->pts,displayTimeUs);
         mPlugin->displayFrame(buf, displayTimeUs);
         mLastDisplayPTS = buf->pts;
         mLastRenderBuffer = buf;
@@ -934,7 +956,7 @@ RenderBuffer *RenderCore::allocRenderBufferWrap(int flag, int rawBufferSize)
 {
     RenderBuffer *renderBuf = (RenderBuffer *)calloc(1, sizeof(RenderBuffer));
     if (!renderBuf) {
-        ERROR("Error No memory");
+        ERROR(mLogCategory,"Error No memory");
         return NULL;
     }
     renderBuf->flag = flag;
@@ -943,7 +965,7 @@ RenderBuffer *RenderCore::allocRenderBufferWrap(int flag, int rawBufferSize)
         renderBuf->raw.size = rawBufferSize;
     }
     renderBuf->id = mBufferId++;
-    TRACE3("<<malloc buffer id:%d,:%p",renderBuf->id,renderBuf);
+    TRACE3(mLogCategory,"<<malloc buffer id:%d,:%p",renderBuf->id,renderBuf);
 
     return renderBuf;
 }
@@ -951,11 +973,11 @@ RenderBuffer *RenderCore::allocRenderBufferWrap(int flag, int rawBufferSize)
 void RenderCore::releaseRenderBufferWrap(RenderBuffer *buffer)
 {
     if (!buffer) {
-        ERROR("Error NULL params");
+        ERROR(mLogCategory,"Error NULL params");
         return;
     }
 
-    TRACE3("<<free buffer id:%d,:%p",buffer->id,buffer);
+    TRACE3(mLogCategory,"<<free buffer id:%d,:%p",buffer->id,buffer);
 
     if ((buffer->flag & BUFFER_FLAG_ALLOCATE_RAW_BUFFER)) {
         free(buffer->raw.dataPtr);
@@ -968,7 +990,7 @@ void RenderCore::addRenderBuffer(RenderBuffer *buffer)
 {
     std::pair<int, RenderBuffer *> item(buffer->id, buffer);
     mAllRenderBufferMap.insert(item);
-    TRACE2("all renderBuffer cnt:%d",mAllRenderBufferMap.size());
+    TRACE2(mLogCategory,"all renderBuffer cnt:%d",mAllRenderBufferMap.size());
 }
 
 void RenderCore::removeRenderBuffer(RenderBuffer *buffer)

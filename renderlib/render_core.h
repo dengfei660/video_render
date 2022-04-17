@@ -18,7 +18,7 @@ extern "C" {
 
 class RenderCore : public Tls::Thread{
   public:
-    RenderCore();
+    RenderCore(int renderlibId, int logCategory);
     virtual ~RenderCore();
     /**
      * @brief init core resource
@@ -126,6 +126,32 @@ class RenderCore : public Tls::Thread{
      * @return int 0 sucess,other fail
      */
     int getPlaybackRate(float *scale);
+
+    /**
+     * @brief Get the Renderlib Id
+     *
+     * @return int renderlib id
+     */
+    int getRenderlibId() {
+        return mRenderlibId;
+    };
+
+    /**
+     * @brief Get the Logcategory object of print
+     * 
+     * @return int category of log
+     */
+    int getLogCategory() {
+        return mLogCategory;
+    };
+
+    /**
+     * @brief queue pts that output from demux to mediasync for a/v sync
+     * @param ptsNs the pts that output from demux, the unit is nanosecond
+     * @param size the frame size or 0 if unknow
+     * @return int 0 success, -1 if failed
+     */
+    int queueDemuxPts(int64_t ptsUs, uint32_t size);
     //thread func
     void readyToRun();
     virtual bool threadLoop();
@@ -164,9 +190,9 @@ class RenderCore : public Tls::Thread{
 
     //static func,callback functions
     static void pluginMsgCallback(void *handle, int msg, void *detail);
-    static void pluginErrorCallback(void *handle, int errCode, const char *errDetail);
     static void pluginBufferReleaseCallback(void *handle,void *data);
     static void pluginBufferDisplayedCallback(void *handle,void *data);
+    static void pluginBufferDropedCallback(void *handle,void *data);
   private:
     /**
      * @brief init mediasync when render core received
@@ -183,6 +209,8 @@ class RenderCore : public Tls::Thread{
     mutable Tls::Mutex   mRenderMutex;
     Tls::Condition       mRenderCondition;
 
+    int mRenderlibId;
+    int mLogCategory;
     //mediasync
     void *mMediaSync;
     int mMediaSynInstID;

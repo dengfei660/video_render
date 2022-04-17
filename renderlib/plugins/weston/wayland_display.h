@@ -22,7 +22,7 @@ class WaylandPlugin;
 
 class WaylandDisplay : public Tls::Thread{
   public:
-    WaylandDisplay(WaylandPlugin *plugin);
+    WaylandDisplay(WaylandPlugin *plugin, int logCategory);
     virtual ~WaylandDisplay();
     /**
      * @brief connet client to compositor server
@@ -119,6 +119,8 @@ class WaylandDisplay : public Tls::Thread{
     struct wp_viewporter *mViewporter;
     struct zwp_linux_dmabuf_v1 *mDmabuf;
     struct wl_shm *mShm;
+
+    int mLogCategory;
 
     std::list<uint32_t> mShmFormats;
     std::unordered_map<uint32_t, uint64_t> mDmaBufferFormats;

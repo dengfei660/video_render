@@ -72,7 +72,7 @@ int Poll::addFd(int fd)
         mFdsMaxCnt += INCREASE_ACTIVE_FDS;
         mFds = (struct pollfd *)realloc(mFds,mFdsMaxCnt*sizeof(struct pollfd));
         if (!mFds) {
-            ERROR("NO memory");
+            ERROR(NO_CATEGERY,"NO memory");
             return ERROR_NO_MEMORY;
         }
     }
@@ -228,7 +228,7 @@ bool Poll::wakeEvent()
     ssize_t num_written;
     while ((num_written = write (mControlWriteFd, "W", 1)) != 1) {
         if (num_written == -1 && errno != EAGAIN && errno != EINTR) {
-            FATAL("failed to wake event: %s", strerror (errno));
+            FATAL(NO_CATEGERY,"failed to wake event: %s", strerror (errno));
             return false;
         }
     }
@@ -241,7 +241,7 @@ bool Poll::releaseEvent()
     ssize_t num_read;
     while ((num_read = read (mControlReadFd, buf, 1)) != 1) {
         if (num_read == -1 && errno != EAGAIN && errno != EINTR) {
-            FATAL ("failed to release event: %s", strerror (errno));
+            FATAL(NO_CATEGERY,"failed to release event: %s", strerror (errno));
             return false;
         }
     }

@@ -8,7 +8,7 @@
 class WstClientPlugin : public RenderPlugin
 {
   public:
-    WstClientPlugin();
+    WstClientPlugin(int logCategory);
     virtual ~WstClientPlugin();
     virtual void init();
     virtual void release();
@@ -48,6 +48,8 @@ class WstClientPlugin : public RenderPlugin
     WstClientWayland *mWayland;
     WstClientSocket *mWstClientSocket;
     PluginRect mWinRect;
+
+    int mLogCategory;
 
     mutable Tls::Mutex mDisplayLock;
     mutable Tls::Mutex mRenderLock;

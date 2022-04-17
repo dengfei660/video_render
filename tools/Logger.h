@@ -11,7 +11,11 @@
 #define LOG_LEVEL_TRACE2  5
 #define LOG_LEVEL_TRACE3  6
 
-void logPrint( int level, const char *fmt, ... );
+#define NO_CATEGERY -1
+
+void Logger_init();
+
+void logPrint(int categery, int level, const char *fmt, ... );
 
 /**
  * @brief set log level
@@ -35,6 +39,14 @@ void Logger_set_level(int setLevel);
 int Logger_get_level();
 
 /**
+ * @brief set a user defined tag to print log
+ * if set userTag to NULL, the user tag will be removed
+ *
+ * @return the category of this object print
+ */
+int Logger_set_userTag(size_t object, char *userTag);
+
+/**
  * @brief set log file,the filepath must is a absolute path,
  * if set filepath null, will close file and print log to stderr
  * the stderr is a default print out file
@@ -42,23 +54,23 @@ int Logger_get_level();
  */
 void Logger_set_file(char *filepath);
 
-#define INT_FATAL(FORMAT, ...)      logPrint(0, "FATAL: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
-#define INT_ERROR(FORMAT, ...)      logPrint(0, "ERROR: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
-#define INT_WARNING(FORMAT, ...)    logPrint(1, " WARN: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
-#define INT_INFO(FORMAT, ...)       logPrint(2, " INFO: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
-#define INT_DEBUG(FORMAT, ...)      logPrint(3, "DEBUG: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
-#define INT_TRACE1(FORMAT, ...)     logPrint(4, "TRACE: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
-#define INT_TRACE2(FORMAT, ...)     logPrint(5, "TRACE: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
-#define INT_TRACE3(FORMAT, ...)     logPrint(6, "TRACE: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
-#define INT_TRACE4(FORMAT, ...)     logPrint(6, "TRACE: %s,%s:%d " FORMAT "\n",TAG,__FILE__, __LINE__, __VA_ARGS__)
+#define INT_FATAL(CAT,FORMAT, ...)      logPrint(CAT,LOG_LEVEL_FATAL, "FATAL: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
+#define INT_ERROR(CAT,FORMAT, ...)      logPrint(CAT,LOG_LEVEL_FATAL, "ERROR: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
+#define INT_WARNING(CAT,FORMAT, ...)    logPrint(CAT,LOG_LEVEL_WARNING, " WARN: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
+#define INT_INFO(CAT,FORMAT, ...)       logPrint(CAT,LOG_LEVEL_INFO, " INFO: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
+#define INT_DEBUG(CAT,FORMAT, ...)      logPrint(CAT,LOG_LEVEL_DEBUG, "DEBUG: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
+#define INT_TRACE1(CAT,FORMAT, ...)     logPrint(CAT,LOG_LEVEL_TRACE1, "TRACE1: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
+#define INT_TRACE2(CAT,FORMAT, ...)     logPrint(CAT,LOG_LEVEL_TRACE2, "TRACE2: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
+#define INT_TRACE3(CAT,FORMAT, ...)     logPrint(CAT,LOG_LEVEL_TRACE3, "TRACE3: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
+#define INT_TRACE4(CAT,FORMAT, ...)     logPrint(CAT,LOG_LEVEL_TRACE3, "TRACE4: %s,%s:%d " FORMAT "\n",TAG,__FILE__, __LINE__, __VA_ARGS__)
 
-#define FATAL(...)                  INT_FATAL(__VA_ARGS__, "")
-#define ERROR(...)                  INT_ERROR(__VA_ARGS__, "")
-#define WARNING(...)                INT_WARNING(__VA_ARGS__, "")
-#define INFO(...)                   INT_INFO(__VA_ARGS__, "")
-#define DEBUG(...)                  INT_DEBUG(__VA_ARGS__, "")
-#define TRACE1(...)                 INT_TRACE1(__VA_ARGS__, "")
-#define TRACE2(...)                 INT_TRACE2(__VA_ARGS__, "")
-#define TRACE3(...)                 INT_TRACE3(__VA_ARGS__, "")
+#define FATAL(CAT,...)                  INT_FATAL(CAT,__VA_ARGS__, "")
+#define ERROR(CAT,...)                  INT_ERROR(CAT,__VA_ARGS__, "")
+#define WARNING(CAT,...)                INT_WARNING(CAT,__VA_ARGS__, "")
+#define INFO(CAT,...)                   INT_INFO(CAT,__VA_ARGS__, "")
+#define DEBUG(CAT,...)                  INT_DEBUG(CAT,__VA_ARGS__, "")
+#define TRACE1(CAT,...)                 INT_TRACE1(CAT,__VA_ARGS__, "")
+#define TRACE2(CAT,...)                 INT_TRACE2(CAT,__VA_ARGS__, "")
+#define TRACE3(CAT,...)                 INT_TRACE3(CAT,__VA_ARGS__, "")
 
 #endif /*__TOOLS_LOGGER_H__*/

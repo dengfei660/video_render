@@ -49,14 +49,14 @@ bool SinkManager::createVdoSink(int vdecPort, int vdoPort)
         sink->getSinkPort(&videoDecPort, &videoOutPort);
 
         if (isSocketSink) {
-            WARNING("sink had been created,issocketsink");
+            WARNING(NO_CATEGERY,"sink had been created,issocketsink");
             sink->setVdoPort(vdoPort);
             sink->start();
             return true;
         }
 
         if (vdecPort == videoDecPort && vdoPort == videoOutPort) {
-            WARNING("Had created a sink with vdecPort:%d, vdoPort:%d, please release before one");
+            WARNING(NO_CATEGERY,"Had created a sink with vdecPort:%d, vdoPort:%d, please release before one");
             return false;
         }
     }
@@ -75,12 +75,12 @@ bool SinkManager::createVdoSink(int vdecPort, int vdoPort)
     }
 
     if (freeIndex == -1) {
-        ERROR("sink count is reached Max %d",mSinkCnt);
+        ERROR(NO_CATEGERY,"sink count is reached Max %d",mSinkCnt);
         return false;
     }
 
     ++mSinkCnt;
-    INFO("Had created sink cnt:%d",mSinkCnt);
+    INFO(NO_CATEGERY,"Had created sink cnt:%d",mSinkCnt);
     mAllSinks[freeIndex] = new VDOSink(this, vdecPort, vdoPort);
     mAllSinks[freeIndex]->start();
 
@@ -95,7 +95,7 @@ bool SinkManager::createVdoSink(int vdecPort, int vdoPort)
 bool SinkManager::createSocketSink(int socketfd, int vdecPort)
 {
     Sink * sink = findSinkByVdecPort(vdecPort);
-    INFO("vdecPort:%d,socketfd:%d",vdecPort, socketfd);
+    INFO(NO_CATEGERY,"vdecPort:%d,socketfd:%d",vdecPort, socketfd);
 
     Tls::Mutex::Autolock _l(mMutex);
     //check if uevent thread had create a sink for vdecport
@@ -106,7 +106,7 @@ bool SinkManager::createSocketSink(int socketfd, int vdecPort)
         sink->getSinkPort(&videoDecPort, &vdoPort);
         //if sink is running,so socket create sink is valid
         if (state == Sink::STATE_RUNNING && isSocketSink) {
-            WARNING("socketSink is running, vdecPort:%d, vdoPort:%d",videoDecPort,vdoPort);
+            WARNING(NO_CATEGERY,"socketSink is running, vdecPort:%d, vdoPort:%d",videoDecPort,vdoPort);
             return false;
         }
         //uevent thread create a vdo sink object,
@@ -127,12 +127,12 @@ bool SinkManager::createSocketSink(int socketfd, int vdecPort)
     }
 
     if (freeIndex == -1) {
-        ERROR("sink count is reached Max %d",mSinkCnt);
+        ERROR(NO_CATEGERY,"sink count is reached Max %d",mSinkCnt);
         return false;
     }
 
     ++mSinkCnt;
-    INFO("Had created sink cnt:%d",mSinkCnt);
+    INFO(NO_CATEGERY,"Had created sink cnt:%d",mSinkCnt);
     /*create a new socket sink to receive video frame data and
     than set vdo port*/
     mAllSinks[freeIndex] = new SocketSink(this, socketfd, vdecPort);
@@ -142,7 +142,7 @@ bool SinkManager::createSocketSink(int socketfd, int vdecPort)
 
 bool SinkManager::destroySink(int vdecPort, int vdoPort)
 {
-    INFO("vdecPort:%d, vdoPort:%d",vdecPort,vdoPort);
+    INFO(NO_CATEGERY,"vdecPort:%d, vdoPort:%d",vdecPort,vdoPort);
     for (int i = 0; i < MAX_SINKS; i++) {
         uint32_t videoDecPort, voutPort;
         mAllSinks[i]->getSinkPort(&videoDecPort, &voutPort);
@@ -154,7 +154,7 @@ bool SinkManager::destroySink(int vdecPort, int vdoPort)
         }
     }
 
-    WARNING("Not found sink for vdecPort:%d,vdoPort:%d",vdecPort, vdoPort);
+    WARNING(NO_CATEGERY,"Not found sink for vdecPort:%d,vdoPort:%d",vdecPort, vdoPort);
     dumpSinkInfo();
     return true;
 }
@@ -193,7 +193,7 @@ void SinkManager::dumpSinkInfo()
         if (mAllSinks[i]) {
             uint32_t iPort, oPort;
             mAllSinks[i]->getSinkPort(&iPort, &oPort);
-            INFO("index:%d, vdecPort:%d, vdoPort:%d",i, iPort, oPort);
+            INFO(NO_CATEGERY,"index:%d, vdecPort:%d, vdoPort:%d",i, iPort, oPort);
         }
     }
 }
