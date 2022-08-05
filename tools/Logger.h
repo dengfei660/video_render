@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2020 Amlogic, Inc. All rights reserved.
+ *
+ * This source code is subject to the terms and conditions defined in the
+ * file 'LICENSE' which is part of this source code package.
+ *
+ * Description:
+ */
 #ifndef __TOOLS_LOGGER_H__
 #define __TOOLS_LOGGER_H__
 
@@ -54,15 +62,15 @@ int Logger_set_userTag(size_t object, char *userTag);
  */
 void Logger_set_file(char *filepath);
 
-#define INT_FATAL(CAT,FORMAT, ...)      logPrint(CAT,LOG_LEVEL_FATAL, "FATAL: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
-#define INT_ERROR(CAT,FORMAT, ...)      logPrint(CAT,LOG_LEVEL_FATAL, "ERROR: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
-#define INT_WARNING(CAT,FORMAT, ...)    logPrint(CAT,LOG_LEVEL_WARNING, " WARN: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
-#define INT_INFO(CAT,FORMAT, ...)       logPrint(CAT,LOG_LEVEL_INFO, " INFO: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
-#define INT_DEBUG(CAT,FORMAT, ...)      logPrint(CAT,LOG_LEVEL_DEBUG, "DEBUG: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
-#define INT_TRACE1(CAT,FORMAT, ...)     logPrint(CAT,LOG_LEVEL_TRACE1, "TRACE1: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
-#define INT_TRACE2(CAT,FORMAT, ...)     logPrint(CAT,LOG_LEVEL_TRACE2, "TRACE2: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
-#define INT_TRACE3(CAT,FORMAT, ...)     logPrint(CAT,LOG_LEVEL_TRACE3, "TRACE3: %s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
-#define INT_TRACE4(CAT,FORMAT, ...)     logPrint(CAT,LOG_LEVEL_TRACE3, "TRACE4: %s,%s:%d " FORMAT "\n",TAG,__FILE__, __LINE__, __VA_ARGS__)
+#define INT_FATAL(CAT,FORMAT, ...)      logPrint(CAT,LOG_LEVEL_FATAL,  "%s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
+#define INT_ERROR(CAT,FORMAT, ...)      logPrint(CAT,LOG_LEVEL_FATAL,  "%s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
+#define INT_WARNING(CAT,FORMAT, ...)    logPrint(CAT,LOG_LEVEL_WARNING,"%s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
+#define INT_INFO(CAT,FORMAT, ...)       logPrint(CAT,LOG_LEVEL_INFO,   "%s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
+#define INT_DEBUG(CAT,FORMAT, ...)      logPrint(CAT,LOG_LEVEL_DEBUG,  "%s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
+#define INT_TRACE1(CAT,FORMAT, ...)     logPrint(CAT,LOG_LEVEL_TRACE1, "%s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
+#define INT_TRACE2(CAT,FORMAT, ...)     logPrint(CAT,LOG_LEVEL_TRACE2, "%s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
+#define INT_TRACE3(CAT,FORMAT, ...)     logPrint(CAT,LOG_LEVEL_TRACE3, "%s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
+#define INT_TRACE4(CAT,FORMAT, ...)     logPrint(CAT,LOG_LEVEL_TRACE3, "%s,%s:%d " FORMAT "\n",TAG,__FILE__, __LINE__, __VA_ARGS__)
 
 #define FATAL(CAT,...)                  INT_FATAL(CAT,__VA_ARGS__, "")
 #define ERROR(CAT,...)                  INT_ERROR(CAT,__VA_ARGS__, "")

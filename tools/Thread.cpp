@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2020 Amlogic, Inc. All rights reserved.
+ *
+ * This source code is subject to the terms and conditions defined in the
+ * file 'LICENSE' which is part of this source code package.
+ *
+ * Description:
+ */
 #include <assert.h>
 #include <sys/resource.h>
 #include <sys/prctl.h>
@@ -41,8 +49,7 @@ Thread::Thread()
     mLock("Thread::mLock"),
     mStatus(NO_ERROR),
     mExitPending(false),
-    mRunning(false),
-    mPaused(false)
+    mRunning(false)
 {
 }
 
@@ -137,8 +144,6 @@ int Thread::_threadLoop(void* user)
                 // awoken by broadcast, but blocked on mLock until break exits scope
                 self->mCondition.broadcast();
                 break;
-            } else if (self->mPaused) { //pause thread
-                self->mCondition.wait(self->mLock);
             }
         }
     } while(self->mRunning);

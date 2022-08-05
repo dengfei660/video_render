@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2020 Amlogic, Inc. All rights reserved.
+ *
+ * This source code is subject to the terms and conditions defined in the
+ * file 'LICENSE' which is part of this source code package.
+ *
+ * Description:
+ */
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -20,7 +28,7 @@
 #include "wayland_shm.h"
 #include "Utils.h"
 
-#define TAG "wayland_buffer"
+#define TAG "rlib:wayland_buffer"
 
 WaylandBuffer::WaylandBuffer(WaylandDisplay *display, WaylandWindow *window, int logCategory)
     : mDisplay(display),

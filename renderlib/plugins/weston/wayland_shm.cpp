@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2020 Amlogic, Inc. All rights reserved.
+ *
+ * This source code is subject to the terms and conditions defined in the
+ * file 'LICENSE' which is part of this source code package.
+ *
+ * Description:
+ */
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -136,10 +144,10 @@ int WaylandShmBuffer::createAnonymousFile(off_t size)
     snprintf (filename, 1024, "%s/%s-%d-%s", path, "wayland-shm", init++, "XXXXXX");
 
     fd = mkstemp(filename);
-	if (fd < 0) {
+    if (fd < 0) {
         ERROR(mLogCategory,"make anonymous file fail");
         goto tag_err;
-	}
+    }
 
     unlink(filename);
 

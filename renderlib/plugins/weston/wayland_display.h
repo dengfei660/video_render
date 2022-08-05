@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2020 Amlogic, Inc. All rights reserved.
+ *
+ * This source code is subject to the terms and conditions defined in the
+ * file 'LICENSE' which is part of this source code package.
+ *
+ * Description:
+ */
 #ifndef __WAYLAND_DISPLAY_H__
 #define __WAYLAND_DISPLAY_H__
 #include <stdint.h>
@@ -105,6 +113,27 @@ class WaylandDisplay : public Tls::Thread{
             uint32_t id, const char *interface, uint32_t version);
     static void registryHandleGlobalRemove (void *data, struct wl_registry *registry, uint32_t name);
     static void shmFormat (void *data, struct wl_shm *wl_shm, uint32_t format);
+    static void outputHandleGeometry( void *data,
+                                  struct wl_output *output,
+                                  int x,
+                                  int y,
+                                  int mmWidth,
+                                  int mmHeight,
+                                  int subPixel,
+                                  const char *make,
+                                  const char *model,
+                                  int transform );
+    static void outputHandleMode( void *data,
+                              struct wl_output *output,
+                              uint32_t flags,
+                              int width,
+                              int height,
+                              int refreshRate );
+    static void outputHandleDone( void *data,
+                              struct wl_output *output );
+    static void outputHandleScale( void *data,
+                               struct wl_output *output,
+                               int32_t scale );
   private:
     char *require_xdg_runtime_dir();
     WaylandPlugin *mWaylandPlugin;
@@ -119,6 +148,7 @@ class WaylandDisplay : public Tls::Thread{
     struct wp_viewporter *mViewporter;
     struct zwp_linux_dmabuf_v1 *mDmabuf;
     struct wl_shm *mShm;
+    struct wl_output *mWlOutput;
 
     int mLogCategory;
 

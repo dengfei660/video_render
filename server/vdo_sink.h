@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2020 Amlogic, Inc. All rights reserved.
+ *
+ * This source code is subject to the terms and conditions defined in the
+ * file 'LICENSE' which is part of this source code package.
+ *
+ * Description:
+ */
 #ifndef __VOD_SINK_H__
 #define __VOD_SINK_H__
 #include <mutex>
@@ -83,6 +91,7 @@ class VDOSink : public Sink, public Tls::Thread {
     bool voutDisconnect();
     void startEvents();
     void stopEvents();
+
     SinkManager *mSinkMgr;
     mutable Tls::Mutex mMutex;
     mutable Tls::Mutex mBufferMutex;
@@ -113,7 +122,9 @@ class VDOSink : public Sink, public Tls::Thread {
     int mNumCaptureBuffers;
     bool mIsSetCaptureFmt;
     bool mHasEvents;
-    bool mHasEOSEvents;
+
+    //base id for capture buffer id
+    int mBufferIdBase;
 
     RenderLibWrap *mRenderlib;
 };

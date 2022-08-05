@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2020 Amlogic, Inc. All rights reserved.
+ *
+ * This source code is subject to the terms and conditions defined in the
+ * file 'LICENSE' which is part of this source code package.
+ *
+ * Description:
+ */
 #include <stdlib.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -137,6 +145,17 @@ void RenderLibWrap::setMediasyncId(int id)
     }
 }
 
+void RenderLibWrap::setPlaybackRate(float rate)
+{
+    int ret;
+    DEBUG(NO_CATEGERY,"playback rate:%f",rate);
+
+    ret = render_set(mRenderLibHandle, KEY_MEDIASYNC_PLAYBACK_RATE, (void *)&rate);
+    if (ret) {
+        ERROR(NO_CATEGERY,"render lib set mediasync id fail");
+    }
+}
+
 void RenderLibWrap::setMediasyncSyncMode(int mode)
 {
     int ret;
@@ -206,6 +225,26 @@ void RenderLibWrap::setVideoFps(int num, int denom)
     }
 }
 
+void RenderLibWrap::setMediasyncThreshold(int threshold)
+{
+    int ret;
+
+    ret = render_set(mRenderLibHandle, KEY_MEDIASYNC_STARTTHRESHOLD, (void *)&threshold);
+    if (ret) {
+        ERROR(NO_CATEGERY,"render lib set threshold fail");
+    }
+}
+
+void RenderLibWrap::setMediasyncDisplayLatency(int latency)
+{
+    int ret;
+
+    ret = render_set(mRenderLibHandle, KEY_MEDIASYNC_VIDEOLATENCY, (void *)&latency);
+    if (ret) {
+        ERROR(NO_CATEGERY,"render lib set threshold fail");
+    }
+}
+
 void RenderLibWrap::getDroppedFrames(int *cnt)
 {
     render_get(mRenderLibHandle, KEY_FRAME_DROPPED, cnt);
@@ -260,7 +299,6 @@ void RenderLibWrap::releaseRenderBuffer(RenderBuffer* buffer)
 
 void RenderLibWrap::doSend(void *userData , RenderMsgType type, void *msg)
 {
-    //TRACE3("in");
     RenderLibWrap *self = static_cast<RenderLibWrap *>(userData);
     switch (type)
     {
@@ -279,18 +317,15 @@ void RenderLibWrap::doSend(void *userData , RenderMsgType type, void *msg)
         default:
             break;
     }
-    //TRACE3("out");
 }
 
 int RenderLibWrap::doGet(void *userData, int key, void *value)
 {
-    //TRACE3("in");
     RenderLibWrap *self = static_cast<RenderLibWrap *>(userData);
 
     if (key == KEY_MEDIASYNC_INSTANCE_ID) {
         *(int *)value = -1;
     }
 
-    //TRACE3("out");
     return 0;
 }

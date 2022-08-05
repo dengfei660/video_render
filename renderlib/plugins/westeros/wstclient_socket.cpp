@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2020 Amlogic, Inc. All rights reserved.
+ *
+ * This source code is subject to the terms and conditions defined in the
+ * file 'LICENSE' which is part of this source code package.
+ *
+ * Description:
+ */
 #include <stdlib.h>
 #include <stdio.h>
 #include <stddef.h>
@@ -46,8 +54,8 @@ bool WstClientSocket::connectToSocket(const char *name)
     workingDir = getenv("XDG_RUNTIME_DIR");
     if ( !workingDir )
     {
-        ERROR(mLogCategory,"wstCreateVideoClientConnection: XDG_RUNTIME_DIR is not set");
-        goto exit;
+        workingDir = "/run";
+        ERROR(mLogCategory,"wstCreateVideoClientConnection: XDG_RUNTIME_DIR is not set,set default %s",workingDir);
     }
 
     DEBUG(mLogCategory,"XDG_RUNTIME_DIR=%s",workingDir);
@@ -110,6 +118,7 @@ bool WstClientSocket::disconnectFromSocket()
     if ( mSocketFd >= 0 )
     {
         mAddr.sun_path[0]= '\0';
+        INFO(mLogCategory,"close socket");
         close( mSocketFd );
         mSocketFd = -1;
     }
@@ -612,7 +621,7 @@ bool WstClientSocket::sendFrameVideoClientConnection(WstBufferInfo *wstBufferInf
             fd[2] = fdToSend2;
         }
 
-        DEBUG(mLogCategory,"send frame:bufferid %d, fd (%d, %d, %d [%d, %d, %d]),mts:%lld", bufferId, frameFd0, frameFd1, frameFd2, fdToSend0, fdToSend1, fdToSend2,wstBufferInfo->frameTime);
+        DEBUG(mLogCategory,"send frame:bufferid %d, fd (%d, %d, %d [%d, %d, %d]),realtmUs:%lld", bufferId, frameFd0, frameFd1, frameFd2, fdToSend0, fdToSend1, fdToSend2,wstBufferInfo->frameTime);
 
         do
         {
@@ -644,6 +653,44 @@ exit:
     }
 
    return result;
+}
+
+void WstClientSocket::sendKeepLastFrameVideoClientConnection(bool keep)
+{
+    struct msghdr msg;
+    struct iovec iov[1];
+    unsigned char mbody[7];
+    int len;
+    int sentLen;
+
+    msg.msg_name = NULL;
+    msg.msg_namelen = 0;
+    msg.msg_iov = iov;
+    msg.msg_iovlen = 1;
+    msg.msg_control = 0;
+    msg.msg_controllen = 0;
+    msg.msg_flags = 0;
+
+    len= 0;
+    mbody[len++] = 'V';
+    mbody[len++] = 'S';
+    mbody[len++] = 2;
+    mbody[len++] = 'K';
+    mbody[len++] = (keep ? 1 : 0);
+
+    iov[0].iov_base = (char*)mbody;
+    iov[0].iov_len = len;
+
+    do
+    {
+        sentLen = sendmsg( mSocketFd, &msg, MSG_NOSIGNAL );
+    }
+    while ( (sentLen < 0) && (errno == EINTR));
+
+    if ( sentLen == len )
+    {
+        INFO(mLogCategory,"sent keep last frame %d to video server", keep);
+    }
 }
 
 void WstClientSocket::processMessagesVideoClientConnection()
@@ -723,7 +770,7 @@ void WstClientSocket::processMessagesVideoClientConnection()
                             WstEvent wstEvent;
                             wstEvent.event = WST_STATUS;
                             wstEvent.param = numDropped;
-                            wstEvent.lparam2 = frameTime;
+                            wstEvent.lparam = frameTime;
                             mPlugin->onWstSocketEvent(&wstEvent);
                         }
                     }
@@ -737,21 +784,25 @@ void WstClientSocket::processMessagesVideoClientConnection()
                         {
                             WstEvent wstEvent;
                             wstEvent.event = WST_UNDERFLOW;
-                            wstEvent.lparam2 = frameTime;
+                            wstEvent.lparam = frameTime;
                             mPlugin->onWstSocketEvent(&wstEvent);
                         }
                     }
                     break;
                     case 'Z':
-                    if ( mlen >= 5)
+                    if ( mlen >= 13)
                     {
-                        int zoomMode = getU32( &m[4] );
-                        DEBUG(mLogCategory,"out: got zoom-mode %d from video server", zoomMode);
+                        int globalZoomActive= getU32( &m[4] );
+                        int allow4kZoom = getU32( &m[8] );
+                        int zoomMode= getU32( &m[12] );
+                        DEBUG(mLogCategory,"out: got zoom-mode %d from video server (globalZoomActive %d allow4kZoom %d)", zoomMode, globalZoomActive, allow4kZoom);
                         if ( mPlugin )
                         {
                             WstEvent wstEvent;
                             wstEvent.event = WST_ZOOM_MODE;
                             wstEvent.param = zoomMode;
+                            wstEvent.param1 = globalZoomActive;
+                            wstEvent.param2 = allow4kZoom;
                             mPlugin->onWstSocketEvent(&wstEvent);
                         }
                     }
@@ -793,7 +844,7 @@ void WstClientSocket::processMessagesVideoClientConnection()
 
 void WstClientSocket::readyToRun()
 {
-    if (mPoll) {
+    if (mPoll && mSocketFd > 0) {
         mPoll->addFd(mSocketFd);
         mPoll->setFdReadable(mSocketFd, true);
     }

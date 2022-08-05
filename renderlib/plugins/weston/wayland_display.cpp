@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2020 Amlogic, Inc. All rights reserved.
+ *
+ * This source code is subject to the terms and conditions defined in the
+ * file 'LICENSE' which is part of this source code package.
+ *
+ * Description:
+ */
 #include <cstring>
 #include "wayland_display.h"
 #include "ErrorCode.h"
@@ -9,6 +17,8 @@
 #  define MAX(a,b)  ((a) > (b)? (a) : (b))
 #  define MIN(a,b)  ((a) < (b)? (a) : (b))
 #endif
+
+#define UNUSED_PARAM(x) ((void)(x))
 
 #define TAG "rlib:wayland_display"
 
@@ -71,6 +81,69 @@ static const struct wl_shm_listener shm_listener = {
   WaylandDisplay::shmFormat
 };
 
+void WaylandDisplay::outputHandleGeometry( void *data,
+                                  struct wl_output *output,
+                                  int x,
+                                  int y,
+                                  int mmWidth,
+                                  int mmHeight,
+                                  int subPixel,
+                                  const char *make,
+                                  const char *model,
+                                  int transform )
+{
+    UNUSED_PARAM(data);
+    UNUSED_PARAM(output);
+    UNUSED_PARAM(x);
+    UNUSED_PARAM(y);
+    UNUSED_PARAM(mmWidth);
+    UNUSED_PARAM(mmHeight);
+    UNUSED_PARAM(subPixel);
+    UNUSED_PARAM(make);
+    UNUSED_PARAM(model);
+    UNUSED_PARAM(transform);
+}
+
+void WaylandDisplay::outputHandleMode( void *data,
+                              struct wl_output *output,
+                              uint32_t flags,
+                              int width,
+                              int height,
+                              int refreshRate )
+{
+    WaylandDisplay *self = static_cast<WaylandDisplay *>(data);
+
+    if ( flags & WL_OUTPUT_MODE_CURRENT )
+    {
+        Tls::Mutex::Autolock _l(self->mMutex);
+        DEBUG(self->mLogCategory,"compositor sets window to (%dx%d)\n", width, height);
+        self->mWaylandPlugin->handDisplayOutputModeChanged(width, height, refreshRate);
+    }
+}
+
+void WaylandDisplay::outputHandleDone( void *data,
+                              struct wl_output *output )
+{
+    UNUSED_PARAM(data);
+    UNUSED_PARAM(output);
+}
+
+void WaylandDisplay::outputHandleScale( void *data,
+                               struct wl_output *output,
+                               int32_t scale )
+{
+    UNUSED_PARAM(data);
+    UNUSED_PARAM(output);
+    UNUSED_PARAM(scale);
+}
+
+static const struct wl_output_listener outputListener = {
+    WaylandDisplay::outputHandleGeometry,
+    WaylandDisplay::outputHandleMode,
+    WaylandDisplay::outputHandleDone,
+    WaylandDisplay::outputHandleScale
+};
+
 void
 WaylandDisplay::registryHandleGlobal (void *data, struct wl_registry *registry,
     uint32_t id, const char *interface, uint32_t version)
@@ -98,6 +171,9 @@ WaylandDisplay::registryHandleGlobal (void *data, struct wl_registry *registry,
             return;
         self->mDmabuf = (struct zwp_linux_dmabuf_v1 *)wl_registry_bind (registry, id, &zwp_linux_dmabuf_v1_interface, 3);
         zwp_linux_dmabuf_v1_add_listener (self->mDmabuf, &dmabuf_listener, (void *)self);
+    }  else if (strcmp (interface, "wl_output") == 0) {
+        self->mWlOutput = (struct wl_output*)wl_registry_bind(registry, id, &wl_output_interface, version);
+        wl_output_add_listener(self->mWlOutput, &outputListener, (void *)self);
     }
 }
 

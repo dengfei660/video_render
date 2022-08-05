@@ -7,6 +7,7 @@
 #include "render_lib.h"
 #include "Thread.h"
 #include "render_plugin.h"
+#include "Queue.h"
 
 #ifdef  __cplusplus
 extern "C" {
@@ -15,6 +16,13 @@ extern "C" {
 #ifdef  __cplusplus
 }
 #endif
+
+/*medisync working mode*/
+enum {
+    VIDEO_WORK_MODE_NORMAL = 0,             // Normal mode
+    VIDEO_WORK_MODE_CACHING_ONLY = 1,       // Only caching data, do not decode. Used in FCC
+    VIDEO_WORK_MODE_DECODE_ONLY = 2         // Decode data but do not output
+};
 
 class RenderCore : public Tls::Thread{
   public:
@@ -120,12 +128,29 @@ class RenderCore : public Tls::Thread{
      */
     int getCurrentAudioPts(int64_t *pts);
     /**
+     * @brief Get the Current media time
+     *
+     * @param mediaTimeType type of media
+     * @param tunit the type of time
+     * @param mediaTime the current time
+     * @return int 0 sucess,other fail
+     */
+    int getMediaTimeByType(int mediaTimeType, int tunit, int64_t* mediaTime);
+    /**
      * @brief Get the Playback Rate
      *
      * @param scale the playback rate
      * @return int 0 sucess,other fail
      */
     int getPlaybackRate(float *scale);
+
+    /**
+     * @brief Set the Playback Rate
+     *
+     * @param scale
+     * @return int 0 sucess,other fail
+     */
+    int setPlaybackRate(float scale);
 
     /**
      * @brief Get the Renderlib Id
@@ -138,7 +163,7 @@ class RenderCore : public Tls::Thread{
 
     /**
      * @brief Get the Logcategory object of print
-     * 
+     *
      * @return int category of log
      */
     int getLogCategory() {
@@ -193,7 +218,12 @@ class RenderCore : public Tls::Thread{
     static void pluginBufferReleaseCallback(void *handle,void *data);
     static void pluginBufferDisplayedCallback(void *handle,void *data);
     static void pluginBufferDropedCallback(void *handle,void *data);
+    static void queueFlushCallback(void *userdata,void *data);
   private:
+    typedef struct {
+        int value;
+        bool changed;
+    } MediasyncConfig;
     /**
      * @brief init mediasync when render core received
      * video frame
@@ -204,23 +234,40 @@ class RenderCore : public Tls::Thread{
     void mediaSyncTunnelmodeDisplay();
     void mediaSyncNoTunnelmodeDisplay();
     int64_t nanosecToPTS90K(int64_t nanosec);
+    /**
+     * @brief block the thread until timeout
+     *
+     * @param timeoutUs block the special value us time
+     */
+    void waitTimeoutUs(int64_t timeoutUs);
+
+    void setMediasyncPropertys();
+
     std::string mCompositorName;
-    std::list<RenderBuffer *> mRenderBufferQueue;
     mutable Tls::Mutex   mRenderMutex;
-    Tls::Condition       mRenderCondition;
+    mutable Tls::Mutex   mLimitMutex;
+    Tls::Condition       mLimitCondition;
+    Tls::Queue           *mQueue;
+    mutable Tls::Mutex   mBufferMgrMutex;
 
     int mRenderlibId;
     int mLogCategory;
     //mediasync
     void *mMediaSync;
     int mMediaSynInstID;
+    bool mMediaSyncInstanceIDSet;
     int mDemuxId;
     int mPcrId;
     int mSyncmode;
-    bool mMediaSyncInited;
-    bool mMediaSyncConfigureChanged;
-    bool mMediaSyncTunnelmode;
-    int mMediasyncHasAudio;
+    bool mMediaSyncBind;
+    bool mMediaSyncAnchor;
+    MediasyncConfig mMediaSyncTunnelmode;
+    MediasyncConfig mMediasyncHasAudio;
+    MediasyncConfig mMediasyncSourceType;
+    MediasyncConfig mMediasyncVideoWorkMode;
+    MediasyncConfig mMediasyncVideoLatency;
+    MediasyncConfig mMediasyncStartThreshold;
+    MediasyncConfig mMediasyncPlayerInstanceId;
 
     bool mPaused;
     bool mFlushing;
@@ -237,11 +284,10 @@ class RenderCore : public Tls::Thread{
     int mFrameWidth;
     int mFrameHeight;
 
-    int mWaitAudioAnchorTimeMs; /*wait audio anchor mediasync time ms*/
+    int mWaitAnchorTimeUs; /*wait anchor mediasync time Us*/
     int64_t mLastInputPTS; /*input frame pts, ns unit*/
     int64_t mLastDisplayPTS; /*display frame pts, ns unit*/
     int64_t mLastDisplayRealtime; /*time got from mediasync to display frame*/
-    RenderBuffer *mLastRenderBuffer; /*the last display renderbuffer*/
     int64_t mLastDisplaySystemtime; /*the local systemtime displaying last renderbuffer*/
     int mReleaseFrameCnt;
     int mDropFrameCnt; /*the frame cnt that droped by mediasync*/

@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2020 Amlogic, Inc. All rights reserved.
+ *
+ * This source code is subject to the terms and conditions defined in the
+ * file 'LICENSE' which is part of this source code package.
+ *
+ * Description:
+ */
 #ifndef __WAYLAND_PLUGIN_H__
 #define __WAYLAND_PLUGIN_H__
 #include "render_plugin.h"
@@ -32,6 +40,7 @@ class WaylandPlugin : public RenderPlugin
     virtual void handleFrameDisplayed(RenderBuffer *buffer);
     //buffer droped callback
     virtual void handleFrameDropped(RenderBuffer *buffer);
+    void handDisplayOutputModeChanged(int width, int height, int refreshRate);
   private:
     PluginCallback *mCallback;
     WaylandDisplay *mDisplay;

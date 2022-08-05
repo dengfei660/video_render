@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2020 Amlogic, Inc. All rights reserved.
+ *
+ * This source code is subject to the terms and conditions defined in the
+ * file 'LICENSE' which is part of this source code package.
+ *
+ * Description:
+ */
 #include "wayland_plugin.h"
 #include "wayland_display.h"
 #include "wayland_window.h"
@@ -59,6 +67,7 @@ int WaylandPlugin::openDisplay()
 {
     int ret;
 
+    Tls::Mutex::Autolock _l(mRenderLock);
     DEBUG(mLogCategory,"openDisplay");
     ret =  mDisplay->openDisplay();
     if (ret != NO_ERROR) {
@@ -78,6 +87,7 @@ int WaylandPlugin::openWindow()
 {
     int ret;
 
+    Tls::Mutex::Autolock _l(mRenderLock);
     DEBUG(mLogCategory,"openWindow");
     /*open toplevel window*/
     ret = mWindow->openWindow(mFullscreen);
@@ -121,6 +131,7 @@ int WaylandPlugin::resume()
 
 int WaylandPlugin::closeDisplay()
 {
+    Tls::Mutex::Autolock _l(mRenderLock);
     mDisplay->closeDisplay();
     mState &= ~PLUGIN_STATE_DISPLAY_OPENED;
 
@@ -129,6 +140,7 @@ int WaylandPlugin::closeDisplay()
 
 int WaylandPlugin::closeWindow()
 {
+    Tls::Mutex::Autolock _l(mRenderLock);
     mWindow->closeWindow();
     mState &= ~PLUGIN_STATE_WINDOW_OPENED;
     return NO_ERROR;
@@ -195,5 +207,13 @@ void WaylandPlugin::handleFrameDropped(RenderBuffer *buffer)
 {
     if (mCallback) {
         mCallback->doBufferDropedCallback(mUserData, (void *)buffer);
+    }
+}
+
+void WaylandPlugin::handDisplayOutputModeChanged(int width, int height, int refreshRate)
+{
+    INFO(mLogCategory, "current display mode, width:%d, height:%d,refreshRate:%d",width, height, refreshRate);
+    if (mWindow) {
+        mWindow->setRenderRectangle(0, 0, width, height);
     }
 }

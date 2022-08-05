@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2020 Amlogic, Inc. All rights reserved.
+ *
+ * This source code is subject to the terms and conditions defined in the
+ * file 'LICENSE' which is part of this source code package.
+ *
+ * Description:
+ */
 #ifndef __WST_CLIENT_PLUGIN_H__
 #define __WST_CLIENT_PLUGIN_H__
 #include "render_plugin.h"
@@ -37,6 +45,10 @@ class WstClientPlugin : public RenderPlugin
 
     void setVideoRect(int videoX, int videoY, int videoWidth, int videoHeight);
   private:
+    typedef struct {
+        bool isSet;
+        bool value;
+    } ConfigValue;
     /**
      * @brief Get the Display Frame Buffer Id object
      *
@@ -51,22 +63,21 @@ class WstClientPlugin : public RenderPlugin
 
     int mLogCategory;
 
-    std::mutex mDisplayLock;
+    ConfigValue mKeepLastFrame;
+    ConfigValue mHideVideo;
+
     std::mutex mRenderLock;
     bool mFullscreen; //default true value to full screen show video
 
     int mNumDroppedFrames;
-    int64_t mLastDisplayFramePTS;
+    int mCommitFrameCnt; //the count frames of commiting to server
 
     RenderVideoFormat mBufferFormat;
     std::unordered_map<int, RenderBuffer *> mRenderBuffersMap;
     /*key is buffer id, value is display time*/
     std::unordered_map<int, int64_t> mDisplayedFrameMap;
 
-    bool mIsVideoPip; //if video pip window
-    bool mHasSetVideoPip; //send video pip flag
-
-    bool mHasSetSessionInfo; //send session info flag
+    bool mIsVideoPip;
     mutable Tls::Mutex mMutex;
     void *mUserData;
     int mState;

@@ -1,3 +1,14 @@
+/*
+ * Copyright (c) 2020 Amlogic, Inc. All rights reserved.
+ *
+ * This source code is subject to the terms and conditions defined in the
+ * file 'LICENSE' which is part of this source code package.
+ *
+ * Description:
+ */
+#define LOG_NDEBUG 0
+#define LOG_TAG  "videorender"
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/time.h>
@@ -10,11 +21,14 @@
 #include <pthread.h>
 #include <thread>
 #include <mutex>
+#include <cutils/log.h>
+#include "Logger.h"
 
 //can print max object count
 #define MAX_USER_TAG 8
 #define MAX_TAG_LENGTH 64
 #define MAX_FILENAME_LENGTH 128
+#define MAX_LOG_BUFFER 1024
 
 static long long getCurrentTimeMillis(void);
 
@@ -131,21 +145,66 @@ void Logger_set_file(char *filepath)
     g_fd = logFd;
 }
 
+char *logLevelToString(int level) {
+    if (level == LOG_LEVEL_FATAL) {
+        return (char *)" F ";
+    } else if (level == LOG_LEVEL_ERROR) {
+        return (char *)" E ";
+    } else if (level == LOG_LEVEL_WARNING) {
+        return (char *)" W ";
+    }  else if (level == LOG_LEVEL_INFO) {
+        return (char *)" I ";
+    }  else if (level == LOG_LEVEL_DEBUG) {
+        return (char *)" D ";
+    }  else if (level == LOG_LEVEL_TRACE1 ||
+      level == LOG_LEVEL_TRACE2 ||
+      level == LOG_LEVEL_TRACE3) {
+        return (char *)" V ";
+    }
+    return (char *) " U ";
+}
+
 void logPrint(int categery ,int level, const char *fmt, ... )
 {
     if ( level <= g_activeLevel )
     {
-        va_list argptr;
-        fprintf( g_fd, "%lld: ", getCurrentTimeMillis());
-        if (g_activeUserTag && categery >= 0 && categery < MAX_USER_TAG && g_userTag[categery].active) {
-            fprintf( g_fd, "%s ", g_userTag[categery].tag);
-        } else {
-            fprintf( g_fd, "%d:%lu ", getpid(),pthread_self());
+         //default output log to logcat
+        if (g_fd == stderr) {
+            va_list argptr;
+            char buf[MAX_LOG_BUFFER];
+            int len = 0;
+
+            len = sprintf(buf, "%lld ",getCurrentTimeMillis());
+            if (g_activeUserTag && categery >= 0 && categery < MAX_USER_TAG && g_userTag[categery].active) {
+                int tlen = len > 0? len:0;
+                tlen = sprintf( buf+tlen, "%s ", g_userTag[categery].tag);
+                if (tlen >= 0) {
+                    len += tlen;
+                }
+            }
+            va_start( argptr, fmt );
+            if (len > 0) {
+                vsnprintf(buf+len, MAX_LOG_BUFFER-len, fmt, argptr);
+            } else {
+                vsnprintf(buf, MAX_LOG_BUFFER, fmt, argptr);
+            }
+            va_end( argptr );
+            ALOGI("%s", buf);
+        } else { //set output log to file
+            va_list argptr;
+            fprintf( g_fd, "%lld ", getCurrentTimeMillis());
+            if (g_activeUserTag && categery >= 0 && categery < MAX_USER_TAG && g_userTag[categery].active) {
+                fprintf( g_fd, "%s ", g_userTag[categery].tag);
+            } else {
+                fprintf( g_fd, "%d:%lu ", getpid(),pthread_self());
+            }
+            //print log level tag
+            fprintf( g_fd, "%s ",logLevelToString(level));
+            va_start( argptr, fmt );
+            vfprintf( g_fd, fmt, argptr );
+            va_end( argptr );
+            fflush(g_fd);
         }
-        va_start( argptr, fmt );
-        vfprintf( g_fd, fmt, argptr );
-        va_end( argptr );
-        fflush(g_fd);
     }
 }
 

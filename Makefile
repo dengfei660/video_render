@@ -1,8 +1,23 @@
 RENDER_LIB = libmediahal_videorender.so
-RENDER_SERVER = render_server
-AML_VERSION = amlVersion
+RENDER_SERVER = videorender_server
 
-SUPPORT_VIDEOTUNNEL = YES
+$(info ***$(SUPPORT_WAYLAND))
+#buildroot or local
+ifeq ($(SUPPORT_WAYLAND),n)
+SUPPORT_WAYLAND=n
+else
+SUPPORT_WAYLAND=y
+endif
+
+#yocto platform
+ifeq ($(SUPPORT_WESTEROS),y)
+SUPPORT_WAYLAND=y
+endif
+
+#yocto platform
+ifeq ($(SUPPORT_WESTON),y)
+SUPPORT_WAYLAND=y
+endif
 
 #path set
 SCANNER_TOOL ?= wayland-scanner
@@ -48,27 +63,36 @@ OBJ_WESTEROS_DISPLAY = \
 	$(RENDERLIB_PATH)/plugins/westeros/wstclient_plugin.o
 
 OBJ_VIDEOTUNNEL_DISPLAY = \
+	$(RENDERLIB_PATH)/plugins/videotunnel/videotunnel_lib_wrap.o \
 	$(RENDERLIB_PATH)/plugins/videotunnel/videotunnel_impl.o \
 	$(RENDERLIB_PATH)/plugins/videotunnel/videotunnel_plugin.o
 
-LOCAL_CFLAGS = -DSUPPORT_WAYLAND
+OBJ_DRM_DISPLAY = \
+	$(RENDERLIB_PATH)/plugins/drm/drm_framepost.o \
+	$(RENDERLIB_PATH)/plugins/drm/drm_framerecycle.o \
+	$(RENDERLIB_PATH)/plugins/drm/drm_display.o \
+	$(RENDERLIB_PATH)/plugins/drm/drm_plugin.o
+
 LOCAL_CFLAGS += \
 	-I$(RENDERLIB_PATH)/plugins/videotunnel \
 	-I$(RENDERLIB_PATH)/plugins/weston \
 	-I$(RENDERLIB_PATH)/plugins/westeros \
+	-I$(RENDERLIB_PATH)/plugins/drm \
 	-I$(PROTOCOL_PATH)
 
+ifeq ($(SUPPORT_WAYLAND), y)
+LOCAL_CFLAGS += -DSUPPORT_WAYLAND
 OBJ_RENDER_LIB += $(OBJ_WESTON_DISPLAY)
+OBJ_RENDER_LIB += $(GENERATED_SOURCES:.c=.o)
+
 OBJ_RENDER_LIB += $(OBJ_WESTEROS_DISPLAY)
 OBJ_RENDER_LIB += $(GENERATED_SOURCES:.c=.o)
 
-ifeq ($(SUPPORT_VIDEOTUNNEL),YES)
-OBJ_RENDER_LIB += $(OBJ_VIDEOTUNNEL_DISPLAY)
-LOCAL_CFLAGS += -DSUPPORT_VIDEOTUNNEL
-LD_SUPPORT += -lvideotunnel
+LD_SUPPORT += -lwayland-client
 endif
 
-LD_SUPPORT += -lwayland-client
+OBJ_RENDER_LIB += $(OBJ_VIDEOTUNNEL_DISPLAY)
+OBJ_RENDER_LIB += $(OBJ_DRM_DISPLAY)
 
 LOCAL_CFLAGS += \
 	-I$(RENDERLIB_PATH) \
@@ -86,7 +110,8 @@ OBJ_RENDER_LIB += \
 	$(TOOLS_PATH)/Times.o \
 	$(TOOLS_PATH)/Poll.o \
 	$(TOOLS_PATH)/Logger.o \
-	$(TOOLS_PATH)/Utils.o
+	$(TOOLS_PATH)/Utils.o \
+	$(TOOLS_PATH)/Queue.o
 
 OBJ_RENDER_SERVER =  \
 	$(SERVER_PATH)/vdo_sink.o \
@@ -96,20 +121,17 @@ OBJ_RENDER_SERVER =  \
 	$(SERVER_PATH)/sink_manager.o \
 	$(SERVER_PATH)/render_server.o
 
-OBJ_AML_VERSION = \
-	$(TOOLS_PATH)/amlVersion.o
-
 LOCAL_CFLAGS += -fPIC -O -Wcpp -g
 
 CFLAGS += $(LOCAL_CFLAGS)
 CXXFLAGS += $(LOCAL_CFLAGS) -std=c++11
 
-TARGET = $(RENDER_LIB) $(RENDER_SERVER) $(AML_VERSION)
+TARGET = $(RENDER_LIB) $(RENDER_SERVER)
 
 all: $(GENERATED_SOURCES) $(TARGET)
 
-LD_FLAG = -g -fPIC -O -Wcpp -lm -lpthread -lz -Wl,-Bsymbolic -laudio_client  -lcutils
-LD_FLAG_RENDERLIB = $(LD_FLAG) -shared -lmediahal_mediasync $(LD_SUPPORT)
+LD_FLAG = -g -fPIC -O -Wcpp -lm -lpthread -lz -Wl,-Bsymbolic -ldl
+LD_FLAG_RENDERLIB = $(LD_FLAG) -shared -lmediahal_mediasync $(LD_SUPPORT) -llog -ldrm_meson
 LD_FLAG_RENDERSERVER = $(LD_FLAG) -lmediahal_videorender
 
 
@@ -126,6 +148,7 @@ $(RENDER_LIB): $(OBJ_RENDER_LIB)
 	cp -f $(RENDER_LIB) $(STAGING_DIR)/usr/lib
 	rm -f $(OBJ_WESTON_DISPLAY)
 	rm -f $(OBJ_WESTEROS_DISPLAY)
+	rm -f $(OBJ_DRM_DISPLAY)
 	rm -f $(PROTOCOL_PATH)/*.o
 	rm -f $(TOOLS_PATH)/*.o
 	rm -f $(RENDERLIB_PATH)/*.o
@@ -137,11 +160,6 @@ $(RENDER_SERVER):$(OBJ_RENDER_SERVER) $(RENDER_LIB)
 	cp -f $(RENDER_SERVER) $(STAGING_DIR)/usr/bin
 	rm -f $(OBJ_RENDER_SERVER)
 
-$(AML_VERSION):$(OBJ_AML_VERSION)
-	$(CXX) -o $@ $^ -g -fPIC -O -Wcpp -ldl
-	chmod a+x $(AML_VERSION)
-	cp -f $(AML_VERSION) $(STAGING_DIR)/usr/bin
-	rm -f $(OBJ_AML_VERSION)
 
 $(PROTOCOL_PATH)/%-protocol.c : $(PROTOCOL_PATH)/%.xml
 	echo $(@D)
@@ -167,6 +185,7 @@ clean:
 	rm $(RENDER_SERVER)
 	rm -f $(OBJ_WESTON_DISPLAY)
 	rm -f $(OBJ_WESTEROS_DISPLAY)
+	rm -f $(OBJ_DRM_DISPLAY)
 	rm -f $(PROTOCOL_PATH)/*.o
 	rm -f $(TOOLS_PATH)/*.o
 	rm -f $(RENDERLIB_PATH)/*.o

@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2020 Amlogic, Inc. All rights reserved.
+ *
+ * This source code is subject to the terms and conditions defined in the
+ * file 'LICENSE' which is part of this source code package.
+ *
+ * Description:
+ */
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -46,7 +54,6 @@ void WaylandDmaBuffer::dmabufCreateSuccess(void *data,
     TRACE1(waylandDma->mLogCategory,"++create dma wl_buffer:%p ",new_buffer);
     Tls::Mutex::Autolock _l(waylandDma->mMutex);
     waylandDma->mWlBuffer = new_buffer;
-    zwp_linux_buffer_params_v1_destroy (params);
     waylandDma->mCondition.signal();
 }
 
@@ -57,7 +64,6 @@ void WaylandDmaBuffer::dmabufCreateFail(void *data,
     Tls::Mutex::Autolock _l(waylandDma->mMutex);
     TRACE1(waylandDma->mLogCategory,"!!!create dma wl_buffer fail");
     waylandDma->mWlBuffer = NULL;
-    zwp_linux_buffer_params_v1_destroy (params);
     waylandDma->mCondition.signal();
 }
 
@@ -96,6 +102,10 @@ struct wl_buffer *WaylandDmaBuffer::constructWlBuffer(RenderDmaBuffer *dmabuf, R
     memcpy(&mRenderDmaBuffer, dmabuf, sizeof(RenderDmaBuffer));
 
     params = zwp_linux_dmabuf_v1_create_params (mDisplay->getDmaBuf());
+    if (!params) {
+        ERROR(mLogCategory, "zwp_linux_dmabuf_v1_create_params fail");
+        return NULL;
+    }
     for (int i = 0; i < dmabuf->planeCnt; i++) {
         TRACE2(mLogCategory,"dma buf index:%d,fd:%d,stride:%d,offset:%d",i, dmabuf->fd[i],dmabuf->stride[i], dmabuf->offset[i]);
         zwp_linux_buffer_params_v1_add(params,
@@ -115,14 +125,17 @@ struct wl_buffer *WaylandDmaBuffer::constructWlBuffer(RenderDmaBuffer *dmabuf, R
     /* Wait for the request answer */
     wl_display_flush (mDisplay->getWlDisplay());
     Tls::Mutex::Autolock _l(mMutex);
-    mWlBuffer =(struct wl_buffer *)0xffffffff;
-    while (mWlBuffer == (struct wl_buffer *)0xffffffff) { //try wait for 1000 ms
-        if (ERROR_TIMED_OUT == mCondition.waitRelative(mMutex, 1000/*microsecond*/)) {
-            WARNING(mLogCategory,"zwp_linux_buffer_params_v1_create timeout");
-            zwp_linux_buffer_params_v1_destroy (params);
-            mWlBuffer = NULL;
+    if (!mWlBuffer) { //if this wlbuffer had created,don't wait zwp linux buffer callback
+        mWlBuffer =(struct wl_buffer *)0xffffffff;
+        while (mWlBuffer == (struct wl_buffer *)0xffffffff) { //try wait for 1000 ms
+            if (ERROR_TIMED_OUT == mCondition.waitRelative(mMutex, 1000/*microsecond*/)) {
+                WARNING(mLogCategory,"zwp_linux_buffer_params_v1_create timeout");
+                mWlBuffer = NULL;
+            }
         }
     }
+    //destroy zwp linux buffer params
+    zwp_linux_buffer_params_v1_destroy (params);
 
     return mWlBuffer;
 }

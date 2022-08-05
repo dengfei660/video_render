@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2020 Amlogic, Inc. All rights reserved.
+ *
+ * This source code is subject to the terms and conditions defined in the
+ * file 'LICENSE' which is part of this source code package.
+ *
+ * Description:
+ */
 #ifndef __RENDER_LIB_WRAP_H__
 #define __RENDER_LIB_WRAP_H__
 #include <mutex>
@@ -27,6 +35,7 @@ class RenderLibWrap {
     void setWindowSize(int x, int y, int w, int h);
     void setFrameSize(int frameWidth, int frameHeight);
     void setMediasyncId(int id);
+    void setPlaybackRate(float rate);
     /**
      * @brief Set the Mediasync Sync Mode object
      *
@@ -44,6 +53,9 @@ class RenderLibWrap {
     //the format is defined in render_lib.h
     void setVideoFormat(int format);
     void setVideoFps(int num, int denom);
+    void setMediasyncThreshold(int threshold);
+    void setMediasyncDisplayLatency(int latency);
+    void setFreezeMode(bool on);
     void getDroppedFrames(int *cnt);
     bool flush();
     bool pause();

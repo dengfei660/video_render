@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2020 Amlogic, Inc. All rights reserved.
+ *
+ * This source code is subject to the terms and conditions defined in the
+ * file 'LICENSE' which is part of this source code package.
+ *
+ * Description:
+ */
 #include "videotunnel_plugin.h"
 #include "Logger.h"
 #include "video_tunnel.h"
@@ -24,11 +32,13 @@ VideoTunnelPlugin::~VideoTunnelPlugin()
 void VideoTunnelPlugin::init()
 {
     mState = PLUGIN_STATE_INITED;
+    mVideoTunnel->init();
 }
 
 void VideoTunnelPlugin::release()
 {
     mState = PLUGIN_STATE_IDLE;
+    mVideoTunnel->release();
 }
 
 void VideoTunnelPlugin::setUserData(void *userData, PluginCallback *callback)

@@ -10,7 +10,8 @@ extern "C" {
 #endif
 
 #define TAG "rlib:render_lib"
-#define VERSION "V1.4.0"
+
+#define VERSION "V1.4.3"
 static int g_renderlibId = 0;
 static std::mutex g_mutext;
 
@@ -58,8 +59,6 @@ void *render_open_with_tag(char *name, char *userTag)
 void* render_open(char *name) {
     return render_open_with_tag(name, NULL);
 }
-
-
 
 void render_set_callback(void *handle, RenderCallback *callback)
 {
@@ -212,6 +211,17 @@ int render_mediasync_get_current_audio_pts(void *handle, int64_t *pts)
         return -1;
     }
     return renderCore->getCurrentAudioPts(pts);
+}
+
+int render_mediasync_get_media_time_by_type(void *handle, int mediaTimeType, int tunit, int64_t *mediaTime)
+{
+    RenderCore * renderCore = static_cast<RenderCore *>(handle);
+    int category = renderCore->getLogCategory();
+    if (!mediaTime) {
+        ERROR(category,"Error NULL params");
+        return -1;
+    }
+    return renderCore->getMediaTimeByType(mediaTimeType, tunit, mediaTime);
 }
 
 int render_mediasync_get_playback_rate(void *handle, float *scale)

@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2020 Amlogic, Inc. All rights reserved.
+ *
+ * This source code is subject to the terms and conditions defined in the
+ * file 'LICENSE' which is part of this source code package.
+ *
+ * Description:
+ */
 #ifndef _TOOS_THREAD_H_
 #define _TOOS_THREAD_H_
 
@@ -38,17 +46,7 @@ class Thread
     int join();
     // Indicates whether this thread is running or not.
     bool isRunning() const;
-    void pause() {
-        mPaused = true;
-    };
-    void resume() {
-      if (!mPaused) {
-              return;
-      }
-      Tls::Mutex::Autolock _l(mLock);
-          mPaused = false;
-          mCondition.broadcast();
-    };
+
   protected:
     // isExitPending() returns true if requestExit() has been called.
     bool isExitPending() const;
@@ -71,7 +69,6 @@ private:
     // note that all accesses of mExitPending and mRunning need to hold mLock
     volatile bool           mExitPending;
     volatile bool           mRunning;
-    volatile bool           mPaused;
 };
 }
 

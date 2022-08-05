@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2020 Amlogic, Inc. All rights reserved.
+ *
+ * This source code is subject to the terms and conditions defined in the
+ * file 'LICENSE' which is part of this source code package.
+ *
+ * Description:
+ */
 #ifndef __WST_CLIENT_WAYLAND_H__
 #define __WST_CLIENT_WAYLAND_H__
 #include <stdint.h>
@@ -49,6 +57,8 @@ class WstClientWayland : public Tls::Thread{
 
     void setTextureCrop(int vx, int vy, int vw, int vh);
 
+    void setForceAspectRatio(bool force);
+
     struct wl_display *getWlDisplay() {
         return mWlDisplay;
     };
@@ -68,13 +78,9 @@ class WstClientWayland : public Tls::Thread{
         *w = mWindowWidth;
         *h = mWindowHeight;
     };
-    void setFrameSize(int frameWidth, int frameHeight) {
-        mFrameWidth = frameWidth;
-        mFrameHeight = frameHeight;
-    };
-    void setZoomMode(int zoomMode) {
-        mZoomMode = zoomMode;
-    };
+    void setFrameSize(int frameWidth, int frameHeight);
+
+    void setZoomMode(int zoomMode, bool globalZoomActive, bool allow4kZoom);
 
     /**callback functions**/
     static void shellSurfaceId(void *data,
@@ -188,11 +194,15 @@ class WstClientWayland : public Tls::Thread{
     int mFrameWidth;
     int mFrameHeight;
 
+    bool mForceAspectRatio;
     double mPixelAspectRatio;
     bool mPixelAspectRatioChanged;
     float mOpacity;
     float mZorder;
+
     int mZoomMode;
+    bool mZoomModeGlobal;
+    bool mAllow4kZoom;
 
     mutable Tls::Mutex mMutex;
     int mFd;

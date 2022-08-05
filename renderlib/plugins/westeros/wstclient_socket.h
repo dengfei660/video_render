@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2020 Amlogic, Inc. All rights reserved.
+ *
+ * This source code is subject to the terms and conditions defined in the
+ * file 'LICENSE' which is part of this source code package.
+ *
+ * Description:
+ */
 #ifndef _WST_SOCKET_CLIENT_H_
 #define _WST_SOCKET_CLIENT_H_
 
@@ -68,7 +76,8 @@ typedef struct _WstEvent
     WstEventType event;
     int param;
     int param1;
-    int64_t lparam2;
+    int param2;
+    int64_t lparam;
 } WstEvent;
 
 #ifdef  __cplusplus
@@ -100,6 +109,7 @@ class WstClientSocket : public Tls::Thread{
     void sendRateVideoClientConnection(int fpsNum, int fpsDenom );
     bool sendFrameVideoClientConnection(WstBufferInfo *wstBufferInfo, WstRect *wstRect);
     void processMessagesVideoClientConnection();
+    void sendKeepLastFrameVideoClientConnection(bool keep);
         //thread func
     void readyToRun();
     virtual bool threadLoop();

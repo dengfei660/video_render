@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2020 Amlogic, Inc. All rights reserved.
+ *
+ * This source code is subject to the terms and conditions defined in the
+ * file 'LICENSE' which is part of this source code package.
+ *
+ * Description:
+ */
 #ifndef __VIDEO_TUNNEL_PLUGIN_H__
 #define __VIDEO_TUNNEL_PLUGIN_H__
 #include "render_plugin.h"

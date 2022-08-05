@@ -51,18 +51,23 @@ enum _RenderKey {
     KEY_VIDEO_PIP, //set/get pip window flag, value type is int, 0:prime video,1:pip,this flag must set before render_connect
     KEY_FRAME_DROPPED,//get dropped video frames count,value type is int
     KEY_ZORDER, //set/get zorder of video plane,value type is int
+    KEY_KEEP_LAST_FRAME, //set/get keep last frame when play end ,value type is int, 0 not keep, 1 keep
+    KEY_HIDE_VIDEO, //set/get hide video,it effect immediatialy,value type is int, 0 not hide, 1 hide
+    KEY_FORCE_ASPECT_RATIO, //set/gst force pixel aspect ratio,value type is int, 1 is force,0 is not force
     KEY_MEDIASYNC_INSTANCE_ID = 400, //set/get mediasync instance id, value type is int
     KEY_MEDIASYNC_PCR_PID, ///set/get mediasync pcr id ,value type is int
     KEY_MEDIASYNC_DEMUX_ID, //set/get mediasync demux id ,value type is int
     KEY_MEDIASYNC_SYNC_MODE, //set/get mediasync sync mode,value type is int, 0:vmaster,1:amaster,2:pcrmaster
     KEY_MEDIASYNC_TUNNEL_MODE, //set mediasync to use tunnel mode, 0:notunnelmode 1:tunnelmode
     KEY_MEDIASYNC_HAS_AUDIO, //set/get having audio,value type is int,0:not,1:has
-    KEY_MEDIASYNC_VIDEOLATENCY, //set/get
-    KEY_MEDIASYNC_STARTTHRESHOLD, //set/get
-    KEY_MEDIASYNC_VIDEOWORKMODE, //set/get
+    KEY_MEDIASYNC_VIDEOLATENCY, //set/get mediasync video latency
+    KEY_MEDIASYNC_STARTTHRESHOLD, //set/get mediasync start threshold
+    KEY_MEDIASYNC_VIDEOWORKMODE, //set/get mediasync video work mode
     KEY_MEDIASYNC_AUDIO_MUTE, //set/get
-    KEY_MEDIASYNC_SOURCETYPE, //set/get
+    KEY_MEDIASYNC_SOURCETYPE, //set/get media sync source type
     KEY_MEDIASYNC_VIDEOFRAME, //set/get
+    KEY_MEDIASYNC_PLAYER_INSTANCE_ID,
+    KEY_MEDIASYNC_PLAYBACK_RATE, //set/get playback rate,value type is float,0.5 is 0.5 rate, 1.0 is normal, 2.0 is 2x rate
     //set/get video tunnel instance id when videotunnel plugin be selected,value type is int,this key must set before render_connect
     KEY_VIDEOTUNNEL_ID = 450,
 };
@@ -388,6 +393,17 @@ int render_mediasync_get_first_audio_pts(void *handle, int64_t *pts);
  * @return int 0 success, -1 if failed
  */
 int render_mediasync_get_current_audio_pts(void *handle, int64_t *pts);
+
+/**
+ * @brief get current media time
+ *
+ * @param handle a handle of render device that was opened
+ * @param mediaTimeType type of media
+ * @param tunit type of time
+ * @param mediaTime the current time
+ * @return int 0 success, -1 if failed
+ */
+int render_mediasync_get_media_time_by_type(void *handle, int mediaTimeType, int tunit, int64_t *mediaTime);
 
 /**
  * @brief get playback rate from mediasync

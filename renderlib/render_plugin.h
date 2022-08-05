@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2020 Amlogic, Inc. All rights reserved.
+ *
+ * This source code is subject to the terms and conditions defined in the
+ * file 'LICENSE' which is part of this source code package.
+ *
+ * Description:
+ */
 #ifndef __RENDER_PLUGIN_H__
 #define __RENDER_PLUGIN_H__
 #include "render_lib.h"
@@ -56,6 +64,9 @@ enum _PluginKey {
     PLUGIN_KEY_VIDEO_FORMAT, //value type is uint32_t,detail see RenderVideoFormat that is in render_lib.h
     PLUGIN_KEY_VIDEO_PIP, //is pip window, int type of value
     PLUGIN_KEY_VIDEOTUNNEL_ID,//set/get videotunnel instance id when videotunnel plugin is selected
+    PLUGIN_KEY_KEEP_LAST_FRAME, //set/get keep last frame when play end ,value type is int, 0 not keep, 1 keep
+    PLUGIN_KEY_HIDE_VIDEO, //set/get hide video,it effect immediatialy,value type is int, 0 not hide, 1 hide
+    PLUGIN_KEY_FORCE_ASPECT_RATIO, //set/gst force pixel aspect ratio,value type is int, 1 is force,0 is not force
 };
 
 typedef struct {

@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2020 Amlogic, Inc. All rights reserved.
+ *
+ * This source code is subject to the terms and conditions defined in the
+ * file 'LICENSE' which is part of this source code package.
+ *
+ * Description:
+ */
 #include <linux/videodev2.h>
 #include "wstclient_wayland.h"
 #include "wstclient_plugin.h"
@@ -13,11 +21,15 @@ WstClientPlugin::WstClientPlugin(int logCategory)
     mLogCategory(logCategory)
 {
     mIsVideoPip = false;
-    mHasSetVideoPip = false;
-    mHasSetSessionInfo = false;
     mBufferFormat = VIDEO_FORMAT_UNKNOWN;
+    mNumDroppedFrames = 0;
+    mCommitFrameCnt = 0;
     mWayland = new WstClientWayland(this, logCategory);
-    mWstClientSocket = new WstClientSocket(this, logCategory);
+    mWstClientSocket = NULL;
+    mKeepLastFrame.isSet = false;
+    mKeepLastFrame.value = 0;
+    mHideVideo.isSet = false;
+    mHideVideo.value = 0;
 }
 
 WstClientPlugin::~WstClientPlugin()
@@ -26,10 +38,6 @@ WstClientPlugin::~WstClientPlugin()
         delete mWayland;
         mWayland = NULL;
     }
-    if (mWstClientSocket) {
-        delete mWstClientSocket;
-        mWstClientSocket = NULL;
-    }
 
     mState = PLUGIN_STATE_IDLE;
     TRACE2(mLogCategory,"deconstruct");
@@ -37,15 +45,11 @@ WstClientPlugin::~WstClientPlugin()
 
 void WstClientPlugin::init()
 {
-    mWstClientSocket->connectToSocket(DEFAULT_VIDEO_SERVER);
     mState = PLUGIN_STATE_INITED;
 }
 
 void WstClientPlugin::release()
 {
-    if (mWstClientSocket) {
-        mWstClientSocket->disconnectFromSocket();
-    }
     mState = PLUGIN_STATE_IDLE;
 }
 
@@ -70,6 +74,18 @@ int WstClientPlugin::openDisplay()
     int ret = NO_ERROR;
 
     DEBUG(mLogCategory,"openDisplay");
+
+    //connect video server first
+    if (!mWstClientSocket) {
+        mWstClientSocket = new WstClientSocket(this, mLogCategory);
+        mWstClientSocket->connectToSocket(DEFAULT_VIDEO_SERVER);
+    }
+
+    if (mWstClientSocket) {
+        mWstClientSocket->sendLayerVideoClientConnection(mIsVideoPip);
+        mWstClientSocket->sendResourceVideoClientConnection(mIsVideoPip);
+    }
+
     ret =  mWayland->connectToWayland();
     if (ret != NO_ERROR) {
         ERROR(mLogCategory,"Error open display");
@@ -94,12 +110,23 @@ int WstClientPlugin::openWindow()
     int ret;
 
     DEBUG(mLogCategory,"openWindow");
-
     mState |= PLUGIN_STATE_WINDOW_OPENED;
-    if (mWstClientSocket && mHasSetVideoPip == false) {
-        mWstClientSocket->sendLayerVideoClientConnection(mIsVideoPip);
-        mWstClientSocket->sendResourceVideoClientConnection(mIsVideoPip);
-        mHasSetVideoPip = true;
+    mCommitFrameCnt = 0;
+    mNumDroppedFrames = 0;
+    /*send session info to server
+    we use mediasync to sync a/v,so select AV_SYNC_MODE_VIDEO_MONO as av clock*/
+    if (mWstClientSocket) {
+        mWstClientSocket->sendSessionInfoVideoClientConnection(AV_SYNC_SESSION_V_MONO, AV_SYNC_MODE_VIDEO_MONO);
+    }
+
+    //send hide video
+    if (mWstClientSocket && mHideVideo.isSet) {
+        mWstClientSocket->sendHideVideoClientConnection(mHideVideo.value);
+    }
+
+    //send keep last video frame
+    if (mWstClientSocket && mKeepLastFrame.isSet) {
+        mWstClientSocket->sendKeepLastFrameVideoClientConnection(mKeepLastFrame.value);
     }
 
     DEBUG(mLogCategory,"openWindow,end");
@@ -112,14 +139,6 @@ int WstClientPlugin::displayFrame(RenderBuffer *buffer, int64_t displayTime)
     WstBufferInfo wstBufferInfo;
     WstRect wstRect;
     int x,y,w,h;
-
-    /*send session info to server
-    we use mediasync to sync a/v,so select AV_SYNC_MODE_VIDEO_MONO as av clock*/
-    if (mHasSetSessionInfo == false) {
-        mWstClientSocket->sendSessionInfoVideoClientConnection(AV_SYNC_SESSION_V_MONO, AV_SYNC_MODE_VIDEO_MONO);
-        mHasSetSessionInfo = true;
-    }
-
 
     mWayland->getVideoBounds(&x, &y, &w, &h);
 
@@ -137,7 +156,7 @@ int WstClientPlugin::displayFrame(RenderBuffer *buffer, int64_t displayTime)
         wstBufferInfo.planeInfo[i].fd = buffer->dma.fd[i];
         wstBufferInfo.planeInfo[i].stride = buffer->dma.stride[i];
         wstBufferInfo.planeInfo[i].offset = buffer->dma.offset[i];
-        TRACE1(mLogCategory,"buffer id:%d,plane[%d],fd:%d,stride:%d,offset:%d",buffer->id,i,buffer->dma.fd[i],buffer->dma.stride[i],buffer->dma.offset[i]);
+        TRACE3(mLogCategory,"buffer id:%d,plane[%d],fd:%d,stride:%d,offset:%d",buffer->id,i,buffer->dma.fd[i],buffer->dma.stride[i],buffer->dma.offset[i]);
     }
 
     wstBufferInfo.frameWidth = buffer->dma.width;
@@ -162,6 +181,7 @@ int WstClientPlugin::displayFrame(RenderBuffer *buffer, int64_t displayTime)
         ret = mWstClientSocket->sendFrameVideoClientConnection(&wstBufferInfo, &wstRect);
         if (!ret) {
             ERROR(mLogCategory,"send video frame to server fail");
+            handleFrameDropped(buffer);
             handleBufferRelease(buffer);
             return ERROR_FAILED_TRANSACTION;
         }
@@ -171,13 +191,13 @@ int WstClientPlugin::displayFrame(RenderBuffer *buffer, int64_t displayTime)
     mRenderLock.lock();
     std::pair<int, RenderBuffer *> item(buffer->id, buffer);
     mRenderBuffersMap.insert(item);
-    mRenderLock.unlock();
+    ++mCommitFrameCnt;
+    TRACE1(mLogCategory,"commit to westeros cnt:%d",mCommitFrameCnt);
 
     //storage displayed render buffer
-    mDisplayLock.lock();
     std::pair<int, int64_t> displayitem(buffer->id, displayTime);
     mDisplayedFrameMap.insert(displayitem);
-    mDisplayLock.unlock();
+    mRenderLock.unlock();
 
     return NO_ERROR;
 }
@@ -188,6 +208,20 @@ int WstClientPlugin::flush()
     INFO(mLogCategory,"flush");
     if (mWstClientSocket) {
         mWstClientSocket->sendFlushVideoClientConnection();
+    }
+    //drop frames those had commited to westeros
+    std::lock_guard<std::mutex> lck(mRenderLock);
+    for (auto item = mDisplayedFrameMap.begin(); item != mDisplayedFrameMap.end(); ) {
+        int bufferid = (int)item->first;
+        auto bufItem = mRenderBuffersMap.find(bufferid);
+        if (bufItem == mRenderBuffersMap.end()) {
+            continue;
+        }
+        mDisplayedFrameMap.erase(item++);
+        RenderBuffer *renderbuffer = (RenderBuffer*) bufItem->second;
+        if (renderbuffer) {
+            handleFrameDropped(renderbuffer);
+        }
     }
 
     return NO_ERROR;
@@ -224,12 +258,53 @@ int WstClientPlugin::closeDisplay()
 int WstClientPlugin::closeWindow()
 {
     mState &= ~PLUGIN_STATE_WINDOW_OPENED;
+    if (mWstClientSocket) {
+        mWstClientSocket->disconnectFromSocket();
+        delete mWstClientSocket;
+        mWstClientSocket = NULL;
+    }
+
+    std::lock_guard<std::mutex> lck(mRenderLock);
+    //drop all frames those don't displayed
+    for (auto item = mDisplayedFrameMap.begin(); item != mDisplayedFrameMap.end(); ) {
+        int bufferid = (int)item->first;
+        auto bufItem = mRenderBuffersMap.find(bufferid);
+        if (bufItem == mRenderBuffersMap.end()) {
+            continue;
+        }
+        mDisplayedFrameMap.erase(item++);
+        RenderBuffer *renderbuffer = (RenderBuffer*) bufItem->second;
+        if (renderbuffer) {
+            handleFrameDropped(renderbuffer);
+        }
+    }
+    //release all frames those had commited to westeros server
+    for (auto item = mRenderBuffersMap.begin(); item != mRenderBuffersMap.end();) {
+        RenderBuffer *renderbuffer = (RenderBuffer*) item->second;
+        mRenderBuffersMap.erase(item++);
+        if (renderbuffer) {
+            handleBufferRelease(renderbuffer);
+        }
+    }
+    mRenderBuffersMap.clear();
+    mDisplayedFrameMap.clear();
+    mCommitFrameCnt = 0;
+    mNumDroppedFrames = 0;
     return NO_ERROR;
 }
 
-
 int WstClientPlugin::get(int key, void *value)
 {
+    switch (key) {
+        case PLUGIN_KEY_KEEP_LAST_FRAME: {
+            *(int *)value = mKeepLastFrame.value;
+            TRACE1(mLogCategory,"get keep last frame:%d",*(int *)value);
+        } break;
+        case PLUGIN_KEY_HIDE_VIDEO: {
+            *(int *)value = mHideVideo.value;
+            TRACE1(mLogCategory,"get hide video:%d",*(int *)value);
+        } break;
+    }
     return NO_ERROR;
 }
 
@@ -263,6 +338,36 @@ int WstClientPlugin::set(int key, void *value)
             int pip = *(int *) (value);
             mIsVideoPip = pip > 0? true:false;
         };
+        case PLUGIN_KEY_KEEP_LAST_FRAME: {
+            int keep = *(int *) (value);
+            mKeepLastFrame.value = keep > 0? true:false;
+            mKeepLastFrame.isSet = true;
+            DEBUG(mLogCategory, "Set keep last frame :%d",mKeepLastFrame.value);
+            if (mState & PLUGIN_STATE_WINDOW_OPENED) {
+                //DEBUG(mLogCategory, "do keep last frame :%d",mKeepLastFrame.value);
+                if (mWstClientSocket) {
+                    mWstClientSocket->sendKeepLastFrameVideoClientConnection(mKeepLastFrame.value);
+                }
+            }
+        } break;
+        case PLUGIN_KEY_HIDE_VIDEO: {
+            int hide = *(int *)(value);
+            mHideVideo.value = hide > 0? true:false;
+            mHideVideo.isSet = true;
+            DEBUG(mLogCategory, "Set hide video:%d",mHideVideo.value);
+            if (mState & PLUGIN_STATE_WINDOW_OPENED) {
+                //DEBUG(mLogCategory, "do hide video :%d",mHideVideo.value);
+                if (mWstClientSocket) {
+                    mWstClientSocket->sendHideVideoClientConnection(mHideVideo.value);
+                }
+            }
+        } break;
+        case PLUGIN_KEY_FORCE_ASPECT_RATIO: {
+            int forceAspectRatio = *(int *)(value);
+            if (mWayland && (mState & PLUGIN_STATE_WINDOW_OPENED)) {
+                mWayland->setForceAspectRatio(forceAspectRatio > 0? true:false);
+            }
+        } break;
     }
     return NO_ERROR;
 }
@@ -312,35 +417,35 @@ void WstClientPlugin::onWstSocketEvent(WstEvent *event)
         case WST_BUFFER_RELEASE: {
             int bufferid = event->param;
             TRACE2(mLogCategory,"Buffer release id:%d",bufferid);
+            std::lock_guard<std::mutex> lck(mRenderLock);
             auto item = mRenderBuffersMap.find(bufferid);
             if (item == mRenderBuffersMap.end()) {
                 WARNING(mLogCategory,"can't find map Renderbuffer");
                 return ;
             }
-            //remove had release render buffer
-            mRenderLock.lock();
-            mRenderBuffersMap.erase(bufferid);
-            mRenderLock.unlock();
 
+            --mCommitFrameCnt;
             RenderBuffer *renderbuffer = (RenderBuffer*) item->second;
+            //remove had release render buffer
+            mRenderBuffersMap.erase(bufferid);
+
             if (renderbuffer) {
                 /*if we can find item in mDisplayedFrameMap,
                 this buffer is dropped by westeros server,so we
                 must call displayed callback*/
                 auto displayFrameItem = mDisplayedFrameMap.find(bufferid);
                 if (displayFrameItem != mDisplayedFrameMap.end()) {
-                    mDisplayLock.lock();
                     mDisplayedFrameMap.erase(bufferid);
-                    mDisplayLock.unlock();
                     WARNING(mLogCategory,"Frame droped,pts:%lld,displaytime:%lld",renderbuffer->pts,(int64_t)displayFrameItem->second);
                     handleFrameDropped(renderbuffer);
                 }
                 handleBufferRelease(renderbuffer);
             }
+            TRACE1(mLogCategory,"commit to westeros cnt:%d",mCommitFrameCnt);
         } break;
         case WST_STATUS: {
             int dropframes = event->param;
-            uint64_t frameTime = event->lparam2;
+            uint64_t frameTime = event->lparam;
             if (mNumDroppedFrames != event->param) {
                 mNumDroppedFrames = event->param;
                 WARNING(mLogCategory,"frame dropped cnt:%d",mNumDroppedFrames);
@@ -348,7 +453,7 @@ void WstClientPlugin::onWstSocketEvent(WstEvent *event)
             //update status,if frameTime isn't equal -1LL
             //this buffer had displayed
             if (frameTime != -1LL) {
-                mLastDisplayFramePTS = frameTime;
+                std::lock_guard<std::mutex> lck(mRenderLock);
                 int bufferId = getDisplayFrameBufferId(frameTime);
                 if (bufferId < 0) {
                     WARNING(mLogCategory,"can't find map displayed frame:%lld",frameTime);
@@ -356,9 +461,7 @@ void WstClientPlugin::onWstSocketEvent(WstEvent *event)
                 }
                 auto displayItem = mDisplayedFrameMap.find(bufferId);
                 if (displayItem != mDisplayedFrameMap.end()) {
-                    mDisplayLock.lock();
                     mDisplayedFrameMap.erase(bufferId);
-                    mDisplayLock.unlock();
                 }
                 auto item = mRenderBuffersMap.find(bufferId);
                 if (item != mRenderBuffersMap.end()) {
@@ -374,7 +477,9 @@ void WstClientPlugin::onWstSocketEvent(WstEvent *event)
         } break;
         case WST_ZOOM_MODE: {
             int mode = event->param;
-            mWayland->setZoomMode(mode);
+            bool globalZoomActive = event->param1 > 0? true:false;
+            bool allow4kZoom = event->param2 > 0? true:false;;
+            mWayland->setZoomMode(mode, globalZoomActive, allow4kZoom);
         } break;
         case WST_DEBUG_LEVEL: {
             /* code */

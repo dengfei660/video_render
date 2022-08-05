@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2020 Amlogic, Inc. All rights reserved.
+ *
+ * This source code is subject to the terms and conditions defined in the
+ * file 'LICENSE' which is part of this source code package.
+ *
+ * Description:
+ */
 #ifndef _TOOS_UTILS_H_
 #define _TOOS_UTILS_H_
 
@@ -155,4 +163,37 @@ int64_t getS64( unsigned char *p );
  * @return int 8 bytes that is sizeof(int64_t)
  */
 int putS64( unsigned char *p,  int64_t n );
+
+#define TIME_SECOND (1000000000)
+#define TIME_INVALID_VALUE             ((int64_t) -1)
+
+#define TIME_IS_VALID(time)   (((int64_t)(time)) != TIME_INVALID_VALUE)
+/* timestamp debugging macros */
+/**
+ * TIME_FORMAT: (skip):
+ *
+ * A string that can be used in printf-like format strings to display a
+ * pts value in h:m:s format.  Use TIME_ARGS() to construct
+ * the matching arguments.
+ *
+ * Example:
+ * printf(GST_TIME_FORMAT "\n", TIME_ARGS(ts));
+ * ]|
+ */
+#define TIME_FORMAT "%u:%02u:%02u.%09u"
+/**
+ * TIME_ARGS: (skip):
+ *
+ * Format pts for the #TIME_FORMAT format string. Note: pts will be
+ * evaluated more than once.
+ */
+#define TIME_ARGS(t) \
+        TIME_IS_VALID (t) ? \
+        (uint32_t) (((int64_t)(t)) / (TIME_SECOND * 60 * 60)) : 99, \
+        TIME_IS_VALID (t) ? \
+        (uint32_t) ((((int64_t)(t)) / (TIME_SECOND * 60)) % 60) : 99, \
+        TIME_IS_VALID (t) ? \
+        (uint32_t) ((((int64_t)(t)) / TIME_SECOND) % 60) : 99, \
+        TIME_IS_VALID (t) ? \
+        (uint32_t) (((int64_t)(t)) % TIME_SECOND) : 999999999
 #endif /*_TOOS_UTILS_H_*/

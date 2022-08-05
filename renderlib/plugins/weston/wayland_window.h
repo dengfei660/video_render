@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2020 Amlogic, Inc. All rights reserved.
+ *
+ * This source code is subject to the terms and conditions defined in the
+ * file 'LICENSE' which is part of this source code package.
+ *
+ * Description:
+ */
 #ifndef __WAYLAND_WINDOW_H__
 #define __WAYLAND_WINDOW_H__
 #include <wayland-client-protocol.h>
@@ -71,11 +79,15 @@ class WaylandWindow
     struct wp_viewport *mAreaViewport;
     struct wp_viewport *mVideoViewport;
     WaylandShmBuffer *mAreaShmBuffer;
-    bool mConfigured;
+    bool mXdgSurfaceConfigured;
     Tls::Condition mConfigureCond;
     Tls::Mutex mConfigureMutex;
 
     bool mRedrawPending = false;
+
+    bool mIsSendPtsToWeston;
+
+    bool mReCommitAreaSurface;
 
     /* the size and position of the area_(sub)surface
     it is full screen size now*/

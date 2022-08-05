@@ -1,4 +1,13 @@
+/*
+ * Copyright (c) 2020 Amlogic, Inc. All rights reserved.
+ *
+ * This source code is subject to the terms and conditions defined in the
+ * file 'LICENSE' which is part of this source code package.
+ *
+ * Description:
+ */
 #include <string.h>
+#include <string>
 #include "wayland_window.h"
 #include "wayland_display.h"
 #include "wayland_plugin.h"
@@ -59,8 +68,7 @@ void WaylandWindow::handleXdgSurfaceConfigure (void *data, struct xdg_surface *x
 
     TRACE1(window->mLogCategory,"handleXdgSurfaceConfigure");
     Tls::Mutex::Autolock _l(window->mConfigureMutex);
-    window->mConfigured = true;
-    //window->mConfigureCond.signal();
+    window->mXdgSurfaceConfigured = true;
 }
 
 static const struct xdg_surface_listener xdg_surface_listener = {
@@ -83,6 +91,13 @@ WaylandWindow::WaylandWindow(WaylandDisplay *wlDisplay, int logCatgory)
     mNoBorderUpdate = false;
     mAreaShmBuffer = NULL;
     mCommitCnt = 0;
+    mIsSendPtsToWeston = true;
+    mReCommitAreaSurface = false;
+    mAreaSurface = NULL;
+    mAreaSurfaceWrapper = NULL;
+    mVideoSurfaceWrapper = NULL;
+    mVideoSubSurface = NULL;
+    mXdgSurfaceConfigured = false;
     memset(&mRenderRect, 0, sizeof(struct Rectangle));
     memset(&mVideoRect, 0, sizeof(struct Rectangle));
     memset(&mWindowRect, 0, sizeof(struct Rectangle));
@@ -93,6 +108,17 @@ WaylandWindow::WaylandWindow(WaylandDisplay *wlDisplay, int logCatgory)
         if (limit > 0) {
             mSupportReUseWlBuffer = true;
             INFO(mLogCategory,"set reuse wl_buffer");
+        }
+    }
+    env = getenv("VIDEO_RENDER_SEND_PTS_TO_WESTON");
+    if (env) {
+        int isSet = atoi(env);
+        if (isSet > 0) {
+            mIsSendPtsToWeston = true;
+            INFO(mLogCategory,"set send pts to weston");
+        } else {
+            mIsSendPtsToWeston = false;
+            INFO(mLogCategory,"do not send pts to weston");
         }
     }
 }
@@ -156,25 +182,27 @@ void WaylandWindow::new_window_xdg_surface(bool fullscreen)
         xdg_toplevel_add_listener (mXdgToplevel, &xdg_toplevel_listener, this);
 
         /* Finally, commit the xdg_surface state as toplevel */
-        mConfigured = false;
+        mXdgSurfaceConfigured = false;
         wl_surface_commit (mAreaSurface);
         wl_display_flush (mDisplay->getWlDisplay());
-        /* we need exactly 2 roundtrips to discover global objects and their state */
-        for (int i = 0; i < 2; i++) {
+        /* we need exactly 3 roundtrips to discover global objects and their state */
+        for (int i = 0; i < 3; i++) {
             if (wl_display_roundtrip_queue(mDisplay->getWlDisplay(), mDisplay->getWlEventQueue()) < 0) {
                 FATAL(mLogCategory,"Error communicating with the wayland display");
             }
         }
 
-        if (mConfigured) {
+        if (mXdgSurfaceConfigured) {
             INFO(mLogCategory,"xdg surface had configured");
         } else {
             WARNING(mLogCategory,"xdg surface not configured");
         }
 
-        //full xdg surface to detect output window size
-        //window size will be taken by handleXdgToplevelConfigure callback
-        ensureFullscreen(fullscreen);
+        //if wl_output had detected, the width and height of mRenderRect will be set
+        //we need invoking setRenderRectangle
+        if (mRenderRect.w > 0 && mRenderRect.h > 0) {
+            setRenderRectangle(mRenderRect.x, mRenderRect.y, mRenderRect.w, mRenderRect.h);
+        }
     } else {
         ERROR(mLogCategory,"Unable to use xdg_wm_base ");
         return;
@@ -186,6 +214,7 @@ void WaylandWindow::new_window_xdg_surface(bool fullscreen)
 int WaylandWindow::openWindow(bool fullscreen)
 {
     DEBUG(mLogCategory,"openWindow");
+    mReCommitAreaSurface = false;
     new_window_common();
     new_window_xdg_surface(fullscreen);
     DEBUG(mLogCategory,"openWindow, end");
@@ -241,6 +270,7 @@ int WaylandWindow::closeWindow()
     if (mAreaSurface) {
         wl_surface_destroy (mAreaSurface);
         mAreaSurface = NULL;
+        mReCommitAreaSurface = false;
     }
 
     return NO_ERROR;
@@ -261,21 +291,26 @@ void WaylandWindow::setRenderRectangle(int x, int y, int w, int h)
 {
     DEBUG(mLogCategory,"set render rect:x:%d,y:%d,w:%d,h:%d",x,y,w,h);
 
+    if (w <= 0 || h <= 0) {
+        WARNING(mLogCategory, "wrong render width or height %dx%d",w,h);
+        return;
+    }
+
     mRenderRect.x = x;
     mRenderRect.y = y;
     mRenderRect.w = w;
     mRenderRect.h = h;
+
+    if (!mXdgSurfaceConfigured) {
+        WARNING(mLogCategory,"Not configured xdg");
+        return;
+    }
 
     if (mAreaViewport) {
         wp_viewport_set_destination (mAreaViewport, w, h);
     }
 
     updateBorders();
-
-    if (!mConfigured) {
-        WARNING(mLogCategory,"Not configured xdg");
-        return;
-    }
 
     if (mVideoWidth != 0 && mVideoSurface) {
         wl_subsurface_set_sync (mVideoSubSurface);
@@ -401,6 +436,13 @@ void WaylandWindow::displayFrameBuffer(RenderBuffer * buf, int64_t realDisplayTi
         return;
     }
 
+    //must commit areasurface first, because weston xdg surface maybe timeout
+    //this cause video is not display,commit can resume xdg surface
+    if (!mReCommitAreaSurface) {
+        mReCommitAreaSurface = true;
+        wl_surface_commit (mAreaSurface);
+    }
+
     TRACE1(mLogCategory,"display renderBuffer:%p,PTS:%lld,realtime:%lld",buf, buf->pts, realDisplayTime);
 
     if (buf->flag & BUFFER_FLAG_ALLOCATE_DMA_BUFFER ||
@@ -455,9 +497,13 @@ void WaylandWindow::displayFrameBuffer(RenderBuffer * buf, int64_t realDisplayTi
         //attach this wl_buffer to weston
         TRACE2(mLogCategory,"++attach,renderbuf:%p,wl_buffer:%p,commitCnt:%d",buf,wlbuffer,mCommitCnt);
         waylandBuf->attach(mVideoSurfaceWrapper);
-        TRACE1(mLogCategory,"display time:%lld,hiPts:%d,lowPts:%d",realDisplayTime, hiPts, lowPts);
-        //wl_surface_set_pts(mVideoSurfaceWrapper, hiPts, lowPts);
-        //wl_surface_attach (mVideoSurfaceWrapper, wlbuffer, 0, 0);
+
+        if (mIsSendPtsToWeston) {
+            TRACE1(mLogCategory,"display time:%lld,hiPts:%d,lowPts:%d",realDisplayTime, hiPts, lowPts);
+            wl_surface_set_pts(mVideoSurfaceWrapper, hiPts, lowPts);
+            wl_surface_attach (mVideoSurfaceWrapper, wlbuffer, 0, 0);
+        }
+
         wl_surface_damage (mVideoSurfaceWrapper, 0, 0, mVideoRect.w, mVideoRect.h);
         wl_surface_commit (mVideoSurfaceWrapper);
     } else {
@@ -581,7 +627,7 @@ std::size_t WaylandWindow::calculateDmaBufferHash(RenderDmaBuffer &dmabuf)
     }
 
     std::size_t hashval = std::hash<std::string>()(hashString);
-    TRACE3(mLogCategory,"hashstr:%s,val:%zu",hashString.c_str(),hashval);
+    //TRACE3(mLogCategory,"hashstr:%s,val:%zu",hashString.c_str(),hashval);
     return hashval;
 }
 
@@ -591,7 +637,7 @@ void WaylandWindow::addWaylandBuffer(RenderBuffer * buf, WaylandBuffer *waylandb
           buf->flag & BUFFER_FLAG_EXTER_DMA_BUFFER) {
         std::size_t hashval = calculateDmaBufferHash(buf->dma);
         std::pair<std::size_t, WaylandBuffer *> item(hashval, waylandbuf);
-        TRACE3(mLogCategory,"fd:%d,w:%d,h:%d,%p,hash:%zu",buf->dma.fd[0],buf->dma.width,buf->dma.height,waylandbuf,hashval);
+        //TRACE3(mLogCategory,"fd:%d,w:%d,h:%d,%p,hash:%zu",buf->dma.fd[0],buf->dma.width,buf->dma.height,waylandbuf,hashval);
         mWaylandBuffersMap.insert(item);
     }
 }

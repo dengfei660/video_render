@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2020 Amlogic, Inc. All rights reserved.
+ *
+ * This source code is subject to the terms and conditions defined in the
+ * file 'LICENSE' which is part of this source code package.
+ *
+ * Description:
+ */
 #include <errno.h>
 #include <poll.h>
 #include "videotunnel_plugin.h"
@@ -21,22 +29,48 @@ VideoTunnelImpl::VideoTunnelImpl(VideoTunnelPlugin *plugin, int logcategory)
     mQueueFrameCnt = 0;
     mStarted = false;
     mRequestStop = false;
+    mVideotunnelLib = NULL;
 }
 
 VideoTunnelImpl::~VideoTunnelImpl()
 {
     if (mFd > 0) {
         if (mIsVideoTunnelConnected) {
-            meson_vt_disconnect(mFd, mInstanceId, VT_ROLE_PRODUCER);
+            if (mVideotunnelLib && mVideotunnelLib->vtDisconnect) {
+                mVideotunnelLib->vtDisconnect(mFd, mInstanceId, VT_ROLE_PRODUCER);
+            }
             mIsVideoTunnelConnected = false;
         }
         if (mInstanceId >= 0) {
-            meson_vt_free_id(mFd, mInstanceId);
+            if (mVideotunnelLib && mVideotunnelLib->vtFreeId) {
+                mVideotunnelLib->vtFreeId(mFd, mInstanceId);
+            }
             mInstanceId = -1;
         }
-        meson_vt_close(mFd);
+        if (mVideotunnelLib && mVideotunnelLib->vtClose) {
+            mVideotunnelLib->vtClose(mFd);
+        }
         mFd = -1;
     }
+}
+
+bool VideoTunnelImpl::init()
+{
+    mVideotunnelLib = videotunnelLoadLib(mLogCategory);
+    if (!mVideotunnelLib) {
+        ERROR(mLogCategory,"videotunnelLoadLib load symbol fail");
+        return false;
+    }
+    return true;
+}
+
+bool VideoTunnelImpl::release()
+{
+    if (mVideotunnelLib) {
+        videotunnelUnloadLib(mLogCategory, mVideotunnelLib);
+        mVideotunnelLib = NULL;
+    }
+    return true;
 }
 
 bool VideoTunnelImpl::connect()
@@ -44,12 +78,16 @@ bool VideoTunnelImpl::connect()
     int ret;
     DEBUG(mLogCategory,"in");
     mRequestStop = false;
-    mFd = meson_vt_open();
+    if (mVideotunnelLib && mVideotunnelLib->vtOpen) {
+        mFd = mVideotunnelLib->vtOpen();
+    }
     if (mFd > 0) {
         //ret = meson_vt_alloc_id(mFd, &mInstanceId);
     }
     if (mFd > 0 && mInstanceId >= 0) {
-        ret = meson_vt_connect(mFd, mInstanceId, VT_ROLE_PRODUCER);
+        if (mVideotunnelLib && mVideotunnelLib->vtConnect) {
+             ret = mVideotunnelLib->vtConnect(mFd, mInstanceId, VT_ROLE_PRODUCER);
+        }
         mIsVideoTunnelConnected = true;
     } else {
         ERROR(mLogCategory,"open videotunnel fail or alloc id fail");
@@ -72,7 +110,9 @@ bool VideoTunnelImpl::disconnect()
     if (mFd > 0) {
         if (mIsVideoTunnelConnected) {
             INFO(mLogCategory,"instance id:%d",mInstanceId);
-            meson_vt_disconnect(mFd, mInstanceId, VT_ROLE_PRODUCER);
+            if (mVideotunnelLib && mVideotunnelLib->vtDisconnect) {
+                mVideotunnelLib->vtDisconnect(mFd, mInstanceId, VT_ROLE_PRODUCER);
+            }
             mIsVideoTunnelConnected = false;
         }
         if (mInstanceId >= 0) {
@@ -81,7 +121,9 @@ bool VideoTunnelImpl::disconnect()
             mInstanceId = 0;
         }
         INFO(mLogCategory,"close vt fd:%d",mFd);
-        meson_vt_close(mFd);
+        if (mVideotunnelLib && mVideotunnelLib->vtClose) {
+            mVideotunnelLib->vtClose(mFd);
+        }
         mFd = -1;
     }
 
@@ -100,13 +142,32 @@ bool VideoTunnelImpl::displayFrame(RenderBuffer *buf, int64_t displayTime)
 
     int fd0 = buf->dma.fd[0];
     //leng.fang suggest fence id set -1
-    ret = meson_vt_queue_buffer(mFd, mInstanceId, fd0, -1 /*fence_fd*/, displayTime);
+    if (mVideotunnelLib && mVideotunnelLib->vtQueueBuffer) {
+        ret = mVideotunnelLib->vtQueueBuffer(mFd, mInstanceId, fd0, -1 /*fence_fd*/, displayTime);
+    }
+
     Tls::Mutex::Autolock _l(mMutex);
     std::pair<int64_t, RenderBuffer *> item(fd0, buf);
     mQueueRenderBufferMap.insert(item);
     ++mQueueFrameCnt;
     TRACE3(mLogCategory,"***fd:%d,w:%d,h:%d,displaytime:%lld,commitCnt:%d",buf->dma.fd[0],buf->dma.width,buf->dma.height,displayTime,mQueueFrameCnt);
+    mPlugin->handleFrameDisplayed(buf);
     return true;
+}
+
+void VideoTunnelImpl::flush()
+{
+    DEBUG(mLogCategory,"flush");
+    Tls::Mutex::Autolock _l(mMutex);
+    if (mVideotunnelLib && mVideotunnelLib->vtCancelBuffer) {
+        mVideotunnelLib->vtCancelBuffer(mFd, mInstanceId);
+    }
+    for (auto item = mQueueRenderBufferMap.begin(); item != mQueueRenderBufferMap.end(); ) {
+        RenderBuffer *renderbuffer = (RenderBuffer*) item->second;
+        mQueueRenderBufferMap.erase(item++);
+        mPlugin->handleFrameDropped(renderbuffer);
+        mPlugin->handleBufferRelease(renderbuffer);
+    }
 }
 
 void VideoTunnelImpl::setVideotunnelId(int id)
@@ -151,7 +212,10 @@ bool VideoTunnelImpl::threadLoop()
         return false;
     }
 
-    ret = meson_vt_dequeue_buffer(mFd, mInstanceId, &bufferId, &fenceId);
+    if (mVideotunnelLib && mVideotunnelLib->vtDequeueBuffer) {
+        ret = mVideotunnelLib->vtDequeueBuffer(mFd, mInstanceId, &bufferId, &fenceId);
+    }
+
     if (ret != 0) {
         if (mRequestStop) {
             DEBUG(mLogCategory,"request stop");
@@ -169,6 +233,7 @@ bool VideoTunnelImpl::threadLoop()
 
     auto item = mQueueRenderBufferMap.find(bufferId);
     if (item == mQueueRenderBufferMap.end()) {
+        ERROR(mLogCategory,"Not found in mQueueRenderBufferMap bufferId:%d",bufferId);
         return true;
     }
     { // try locking when removing item from mQueueRenderBufferMap
@@ -179,7 +244,6 @@ bool VideoTunnelImpl::threadLoop()
         TRACE3(mLogCategory,"***dq buffer fd:%d,commitCnt:%d",bufferId,mQueueFrameCnt);
     }
 
-    mPlugin->handleFrameDisplayed(buffer);
     mPlugin->handleBufferRelease(buffer);
     return true;
 }

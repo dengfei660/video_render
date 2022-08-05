@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2020 Amlogic, Inc. All rights reserved.
+ *
+ * This source code is subject to the terms and conditions defined in the
+ * file 'LICENSE' which is part of this source code package.
+ *
+ * Description:
+ */
 #include <cstring>
 #include "wstclient_wayland.h"
 #include "ErrorCode.h"
@@ -15,8 +23,8 @@
 
 #define DEFAULT_WINDOW_X (0)
 #define DEFAULT_WINDOW_Y (0)
-#define DEFAULT_WINDOW_WIDTH (0)
-#define DEFAULT_WINDOW_HEIGHT (0)
+#define DEFAULT_WINDOW_WIDTH (1920)
+#define DEFAULT_WINDOW_HEIGHT (1080)
 
 #define AV_SYNC_SESSION_V_MONO 64
 
@@ -31,7 +39,7 @@ enum
     ZOOM_GLOBAL
 };
 
-#define needBounds() ((mZoomMode != ZOOM_NONE))
+#define needBounds() (mForceAspectRatio || (mZoomMode != ZOOM_NONE))
 
 void WstClientWayland::shellSurfaceId(void *data,
                            struct wl_simple_shell *wl_simple_shell,
@@ -112,6 +120,7 @@ void WstClientWayland::shellSurfaceStatus(void *data,
     WESTEROS_UNUSED(width);
     WESTEROS_UNUSED(height);
 
+    INFO(self->mLogCategory,"opacity: %d,zorder:%d", opacity,zorder);
     self->mWindowChange = true;
     self->mOpacity = opacity;
     self->mZorder = zorder;
@@ -338,18 +347,23 @@ WstClientWayland::WstClientWayland(WstClientPlugin *plugin, int logCategory)
     mWindowY = DEFAULT_WINDOW_Y;
     mWindowWidth = DEFAULT_WINDOW_WIDTH;
     mWindowHeight = DEFAULT_WINDOW_HEIGHT;
-    mVideoX = 0;
-    mVideoY = 0;
-    mVideoWidth = 0;
-    mVideoHeight = 0;
+    mVideoX = mWindowX;
+    mVideoY = mWindowY;
+    mVideoWidth = mWindowWidth;
+    mVideoHeight = mWindowHeight;
     mWlShellSurfaceId = 0;
     mWindowChange = false;
     mWindowSet = false;
     mWindowSizeOverride = false;
     mZoomMode = ZOOM_NONE;
+    mZoomModeGlobal = false;
+    mAllow4kZoom = false;
     mFrameWidth = 0;
     mFrameHeight = 0;
+    mForceAspectRatio = false;
     mPixelAspectRatio = 1.0;
+    mScaleXDenom = 0;
+    mScaleYDenom = 0;
     mPoll = new Tls::Poll(true);
 }
 
@@ -369,8 +383,13 @@ int WstClientWayland::connectToWayland()
     if (!mWlDisplay) {
         mWlDisplay = wl_display_connect("test-0");
         if (!mWlDisplay) {
-            FATAL(mLogCategory,"Failed to connect to the wayland display");
-            return ERROR_OPEN_FAIL;
+            FATAL(mLogCategory,"Failed to connect to the wayland display, try wayland-0");
+            mWlDisplay = wl_display_connect("wayland-0");
+            if (!mWlDisplay) {
+                ERROR(mLogCategory, "wayland connect fail");
+                return ERROR_OPEN_FAIL;
+            }
+            INFO(mLogCategory,"wayland connect to wayland-0");
         }
         INFO(mLogCategory,"wayland connect to test-0");
     }
@@ -478,13 +497,53 @@ void WstClientWayland::disconnectFromWayland()
 
 void WstClientWayland::setWindowSize(int x, int y, int w, int h)
 {
+    if (x == 0 && y == 0 && w == 0 && h == 0) {
+        WARNING(mLogCategory, "set full screen? %dx%dx%dx%d",x,y,w,h);
+        return;
+    }
     mWindowX = x;
     mWindowY = y;
     mWindowWidth = w;
     mWindowHeight = h;
+    mWindowChange = true;
     mWindowSet = true;
     mWindowSizeOverride = true;
     DEBUG(mLogCategory,"set window size:x:%d,y:%d,w:%d,h:%d",x,y,w,h);
+    if (mWlVpcSurface) {
+        DEBUG(mLogCategory, "wl_vpc_surface_set_geometry(%d,%d,%d,%d)",mWindowX,mWindowY,mWindowWidth,mWindowHeight);
+        wl_vpc_surface_set_geometry(mWlVpcSurface, mWindowX, mWindowY, mWindowWidth, mWindowHeight);
+    }
+    //if window size is updated, update video position
+    if (mWlVpcSurface && mWindowChange && mScaleXDenom != 0 && mScaleYDenom != 0) {
+        mWindowChange = false;
+        updateVideoPosition();
+    }
+}
+
+void WstClientWayland::setFrameSize(int frameWidth, int frameHeight) {
+    mFrameWidth = frameWidth;
+    mFrameHeight = frameHeight;
+    DEBUG(mLogCategory, "set frame size:%dx%d",mFrameWidth, mFrameHeight);
+}
+
+void WstClientWayland::setZoomMode(int zoomMode, bool globalZoomActive, bool allow4kZoom) {
+    DEBUG(mLogCategory, "zoomMode:%d, globalZoomActive:%d, allow4kZoom:%d",zoomMode,globalZoomActive,allow4kZoom);
+    mZoomModeGlobal = globalZoomActive;
+    if ( !globalZoomActive )
+    {
+        mZoomMode = ZOOM_NONE;
+    }
+    mAllow4kZoom= allow4kZoom;
+    if ( mZoomModeGlobal == true )
+    {
+        if ( (zoomMode >= ZOOM_NONE) && (zoomMode <= ZOOM_ZOOM) )
+        {
+            mZoomMode = zoomMode;
+            mPixelAspectRatioChanged = true;
+        }
+    } else {
+        DEBUG(mLogCategory, "global zoom disabled: ignore server value");
+    }
 }
 
 void WstClientWayland::getVideoBounds(int *x, int *y, int *w, int *h)
@@ -503,15 +562,14 @@ void WstClientWayland::getVideoBounds(int *x, int *y, int *w, int *h)
         *y = mWindowY;
         *w = mWindowWidth;
         *h = mWindowHeight;
+        TRACE3(mLogCategory, "no wldisplay, %d,%d,%d,%d",mVideoX,mVideoY,mVideoWidth,mVideoHeight);
         return;
     }
-    //do not calculate bounds
-    if (!needBounds()) {
-        *x = mVideoX;
-        *y = mVideoY;
-        *w = mVideoWidth;
-        *h = mVideoHeight;
-        return;
+
+    //if window size is updated, update video position
+    if (mWlVpcSurface && mWindowChange) {
+        mWindowChange = false;
+        updateVideoPosition();
     }
 
     vx = mVideoX;
@@ -519,13 +577,20 @@ void WstClientWayland::getVideoBounds(int *x, int *y, int *w, int *h)
     vw = mVideoWidth;
     vh = mVideoHeight;
 
+    TRACE3(mLogCategory, "videoX:%d,videoY:%d,videoW:%d,videoH:%d",mVideoX,mVideoY,mVideoWidth,mVideoHeight);
+
     frameWidth = mFrameWidth;
     frameHeight = mFrameHeight;
     contentWidth = frameWidth * mPixelAspectRatio;
     contentHeight = frameHeight;
 
+    if (mPixelAspectRatioChanged)
+        DEBUG(mLogCategory,"pixelAspectRatio: %f zoom-mode %d", mPixelAspectRatio, mZoomMode);
+
     ard = (double)mVideoWidth/(double)mVideoHeight;
     arf = (double)contentWidth/(double)contentHeight;
+
+    TRACE3(mLogCategory, "frameWidth:%d,frameHeight:%d,contentWidth:%f,contentHeight:%f",frameWidth,frameHeight,contentWidth,contentHeight);
 
     /* Establish region of interest */
     roix = 0;
@@ -533,12 +598,13 @@ void WstClientWayland::getVideoBounds(int *x, int *y, int *w, int *h)
     roiw = contentWidth;
     roih = contentHeight;
 
-    zoomMode= mZoomMode;
+    zoomMode = mZoomMode;
     if ((mFrameWidth > 1920) || (mFrameHeight > 1080))
     {
         zoomMode= ZOOM_NORMAL;
     }
-    if (mPixelAspectRatioChanged ) DEBUG(mLogCategory,"ard %f arf %f", ard, arf);
+    //if (mPixelAspectRatioChanged )
+        DEBUG(mLogCategory,"ard %f arf %f", ard, arf);
     switch ( zoomMode )
     {
         case ZOOM_NORMAL:
@@ -636,6 +702,7 @@ void WstClientWayland::getVideoBounds(int *x, int *y, int *w, int *h)
     *y= vy;
     *w= vw;
     *h= vh;
+    TRACE3(mLogCategory,"vrect %d, %d, %d, %d", vx, vy, vw, vh);
 }
 
 void WstClientWayland::setTextureCrop(int vx, int vy, int vw, int vh)
@@ -753,14 +820,28 @@ void WstClientWayland::setTextureCrop(int vx, int vy, int vw, int vh)
     }
 }
 
+void WstClientWayland::setForceAspectRatio(bool force)
+{
+    DEBUG(mLogCategory, "force aspect ratio:%d",force);
+    mForceAspectRatio = force;
+}
+
 void WstClientWayland::updateVideoPosition()
 {
+    bool needUpdate= true;
+    int vx, vy, vw, vh;
+    vx= mVideoX;
+    vy= mVideoY;
+    vw= mVideoWidth;
+    vh= mVideoHeight;
+
     if (mWindowSizeOverride)
     {
         mVideoX= ((mWindowX*mScaleXNum)/mScaleXDenom) + mTransX;
         mVideoY= ((mWindowY*mScaleYNum)/mScaleYDenom) + mTransY;
         mVideoWidth= (mWindowWidth*mScaleXNum)/mScaleXDenom;
         mVideoHeight= (mWindowHeight*mScaleYNum)/mScaleYDenom;
+        DEBUG(mLogCategory, "window override video rectangle(%d,%d,%d,%d)",mVideoX,mVideoY,mVideoWidth,mVideoHeight);
     }
     else
     {
@@ -768,26 +849,33 @@ void WstClientWayland::updateVideoPosition()
         mVideoY = mTransY;
         mVideoWidth = (mOutputWidth*mScaleXNum)/mScaleXDenom;
         mVideoHeight = (mOutputHeight*mScaleYNum)/mScaleYDenom;
+        DEBUG(mLogCategory, "video rectangle(%d,%d,%d,%d)",mVideoX,mVideoY,mVideoWidth,mVideoHeight);
     }
 
-    /* Send a buffer to compositor to update hole punch geometry */
-    if (mWlSb)
-    {
-        struct wl_buffer *buff;
-
-        buff = wl_sb_create_buffer( mWlSb,
-                                    0,
-                                    mWindowWidth,
-                                    mWindowHeight,
-                                    mWindowWidth*4,
-                                    WL_SB_FORMAT_ARGB8888 );
-        wl_surface_attach(mWlSurface, buff, mWindowX, mWindowY);
-        wl_surface_damage(mWlSurface, 0, 0, mWindowWidth, mWindowHeight);
-        wl_surface_commit(mWlSurface);
+    if (vx == mVideoX && vy == mVideoY && vw == mVideoWidth && vh == mVideoHeight) {
+        needUpdate = false;
     }
-    if (mVideoPaused && mPlugin)
-    {
-        mPlugin->setVideoRect(mVideoX, mVideoY, mVideoWidth, mVideoHeight);
+
+    if (needUpdate) {
+        /* Send a buffer to compositor to update hole punch geometry */
+        if (mWlSb)
+        {
+            struct wl_buffer *buff;
+
+            buff = wl_sb_create_buffer( mWlSb,
+                                        0,
+                                        mWindowWidth,
+                                        mWindowHeight,
+                                        mWindowWidth*4,
+                                        WL_SB_FORMAT_ARGB8888 );
+            wl_surface_attach(mWlSurface, buff, mWindowX, mWindowY);
+            wl_surface_damage(mWlSurface, 0, 0, mWindowWidth, mWindowHeight);
+            wl_surface_commit(mWlSurface);
+        }
+        if (mVideoPaused && mPlugin)
+        {
+            mPlugin->setVideoRect(mVideoX, mVideoY, mVideoWidth, mVideoHeight);
+        }
     }
 }
 
@@ -811,8 +899,12 @@ void WstClientWayland::setVideoPath(bool useGfxPath )
         mVideoWidth = mWindowWidth;
         mVideoHeight = mWindowHeight;
 
-        getVideoBounds(&vx, &vy, &vw, &vh);
-        setTextureCrop(vx, vy, vw, vh);
+        DEBUG(mLogCategory, "video rect (%d,%d,%d,%d)",mVideoX,mVideoY,mVideoWidth,mVideoHeight);
+
+        if (mFrameWidth > 0 && mFrameHeight > 0) {
+            getVideoBounds(&vx, &vy, &vw, &vh);
+            setTextureCrop(vx, vy, vw, vh);
+        }
 
         mVideoX = tx;
         mVideoY = ty;
